@@ -39,6 +39,10 @@ jobs:
         env:
           MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt-2.26.4
         run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Test the actual native file REST command
+        env:
+          MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt-2.26.4
+        run: php tests/native-file-command.php
       - name: Build installable plugin
         if: matrix.php == '8.3'
         run: python3 scripts/package.py
@@ -46,7 +50,7 @@ jobs:
         if: matrix.php == '8.3'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: MantisMcp-0.2.0
+          name: MantisMcp-0.2.1
           path: dist/MantisMcp-*.zip
           if-no-files-found: error
       - name: Build Tauria Tasks ChatGPT plugin

@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/core/Protocol.php';
 require_once __DIR__ . '/core/AttachmentDownload.php';
+require_once __DIR__ . '/core/NativeRest.php';
 require_once __DIR__ . '/core/Tools.php';
 require_once __DIR__ . '/core/Http.php';
 require_once __DIR__ . '/core/RestApi.php';

@@ -75,7 +75,7 @@ to every resumed request. No cross-request file or account cache is used.
 
 ## Deploy and verify
 
-Replace the installed `plugins/MantisMcp` directory with the 0.2.0 package and
+Replace the installed `plugins/MantisMcp` directory with the 0.2.1 package and
 upgrade the plugin in MantisBT's plugin manager if offered. Refresh the existing
 Tauria Tasks connection's tool list using its management settings; confirm
 `mantis_download_attachment` appears. Keep the working API-key remote connection.
@@ -88,3 +88,20 @@ Local tests verify binary reconstruction, native file-permission helpers and
 client materialization against test data. Downloading the live JPEG through
 Tauria Tasks remains pending until deployment and tool refresh; a local test is
 not an end-to-end production verification.
+
+## MantisBT 2.26.4 on PHP 8.2 and later
+
+The native `IssueFileGetCommand` assigns an undeclared `user_id` property.
+MantisBT's REST error handler converts that PHP deprecation into an exception,
+so a file download can fail even after all permission checks pass. Version
+0.2.1 works around exactly that deprecation while invoking the unchanged native
+file-read handler. It matches the native source file and exact property name,
+forwards other errors to the previous handler, and restores that handler in a
+`finally` block. Permission checks and file processing are unchanged.
+
+The regression test invokes the actual 2.26.4 REST handler and command under
+strict error handling, reproduces the unpatched failure on PHP 8.2+, verifies
+original PNG bytes with the workaround, and checks propagation of other warnings
+and dynamic-property errors. A production retest is still required after this
+server-side update. The tool signature is unchanged; an already refreshed
+ChatGPT connection does not need another reinstall for this patch.

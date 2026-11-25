@@ -108,8 +108,8 @@ final class RestApi {
         $request = $this->request->withMethod($method)->withQueryParams($query)->withParsedBody($payload)
             ->withoutHeader('If-Match')->withoutHeader('If-None-Match')
             ->withoutHeader('If-Modified-Since');
-        $response = call_user_func($this->handlers[$handler], $request,
-            call_user_func($this->responseFactory), $path);
+        $response = NativeRest::invoke($this->handlers[$handler], $request,
+            call_user_func($this->responseFactory), $path, $handler === 'files');
         $status = $response->getStatusCode();
         if ($status < 200 || $status >= 300) {
             $messages = array(

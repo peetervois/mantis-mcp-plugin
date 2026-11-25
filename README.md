@@ -156,7 +156,7 @@ separation, input bounds, REST dispatch and write-tool gating.
 They do **not** replace an installation test against a real MantisBT database.
 The integration has not yet been deployed to the target MantisBT instance.
 
-The package is written to `dist/MantisMcp-0.2.0.zip`. It contains only the
+The package is written to `dist/MantisMcp-0.2.1.zip`. It contains only the
 installable plugin directory, its license, documentation and this README; no tokens, development
 dependencies or test data are included.
 

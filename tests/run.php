@@ -23,7 +23,7 @@ function test_case($name, callable $test) {
 
 test_case('registers a native MantisBT plugin and REST hook', function() {
     $plugin = new MantisMcpPlugin('MantisMcp');
-    same('0.2.0', $plugin->version);
+    same('0.2.1', $plugin->version);
     same('2.26.4', $plugin->requires['MantisCore']);
     same('routes', $plugin->hooks()['EVENT_REST_API_ROUTES']);
     same(OFF, $plugin->config()['enable_write_tools']);
