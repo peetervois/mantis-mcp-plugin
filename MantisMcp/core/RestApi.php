@@ -77,6 +77,21 @@ final class RestApi {
                     array('id' => $issueId, 'file_id' => $attachmentId));
                 return AttachmentDownload::chunk($issueId, $attachmentId, $info, $data,
                     $offset, $length, $expected, $this->maxDownloadBytes);
+            case 'mantis_get_relationships':
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                return Relationships::listForIssue($arguments['issue_id']);
+            case 'mantis_get_relationship_types':
+                return Relationships::types();
+            case 'mantis_set_relationship':
+                foreach (array($arguments['issue_id'], $arguments['target_issue_id']) as $id) {
+                    $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $id));
+                }
+                return Relationships::set($arguments['issue_id'], $arguments['target_issue_id'], $arguments['type_id']);
+            case 'mantis_delete_relationship':
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                $target = Relationships::target($arguments['issue_id'], $arguments['relationship_id']);
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $target));
+                return Relationships::delete($arguments['issue_id'], $arguments['relationship_id']);
             case 'mantis_upload_attachment':
                 $this->call('issues', 'GET', array('select' => 'id'), null,
                     array('id' => $arguments['issue_id']));

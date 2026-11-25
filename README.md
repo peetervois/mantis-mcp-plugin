@@ -72,7 +72,7 @@ An OpenAI API key is not involved.
 
 ## Tools
 
-The default configuration exposes seven read tools:
+The default configuration exposes nine read tools:
 
 | Tool | Purpose |
 |---|---|
@@ -82,6 +82,8 @@ The default configuration exposes seven read tools:
 | `mantis_get_issue_options` | Discover project-specific enum ids. |
 | `mantis_list_issues` | List/filter accessible issues, up to 100 per page. |
 | `mantis_get_issue` | Read an accessible issue and its permitted notes. |
+| `mantis_get_relationship_types` | Discover native/custom relationship types and their reverse types. |
+| `mantis_get_relationships` | Read links whose other issue is accessible to the caller. |
 | `mantis_download_attachment` | Download bounded binary chunks after issue and note permission checks. |
 
 To enable writes, add this inside the existing PHP block in
@@ -97,18 +99,22 @@ This additionally exposes:
 |---|---|
 | `mantis_create_issue` | Create an issue as the current user. |
 | `mantis_update_issue` | Update supported fields using MantisBT's normal rules. |
+| `mantis_set_relationship` | Create or change a native link between accessible issues. |
+| `mantis_delete_relationship` | Delete a selected relationship using native permissions. |
 | `mantis_add_note` | Add a note as the current user. |
 | `mantis_upload_attachment` | Upload one original file and return verified stored-file metadata. |
 
 Enabling the tools does not grant additional MantisBT permissions. A read-only
 MantisBT account remains read-only. Write schemas do not accept another reporter,
 an arbitrary REST operation, a URL, an upload path or a command to execute.
-Deletion is not implemented in this version.
+Relationship deletion is available; issue, note and attachment deletion are not implemented.
 
 See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
 assembly helper, size limits and verification steps.
 See [attachment uploads](docs/UPLOADS.md) for the bounded file input contract,
 preparation helper, size limits and handling of uncertain write results.
+
+See [relationships](docs/RELATIONSHIPS.md) for native type discovery, permissions and live acceptance.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.

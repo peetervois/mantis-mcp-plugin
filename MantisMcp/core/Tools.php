@@ -41,6 +41,12 @@ final class Tools {
                 ), array()),
             self::tool('mantis_get_issue', 'Read an accessible issue, including permitted notes.',
                 array('issue_id' => $id, 'select' => $select), array('issue_id')),
+            self::tool('mantis_get_relationship_types',
+                'Discover native relationship type ids, API names, labels and reverse-direction type ids, including custom types.',
+                array(), array()),
+            self::tool('mantis_get_relationships',
+                'List this issue\'s relationships whose other issue is accessible to the current account. Types are relative to this issue.',
+                array('issue_id' => $id), array('issue_id')),
             self::tool('mantis_download_attachment',
                 'Download original attachment bytes in bounded base64 chunks through this connection. '
                 . 'Read content_base64 from structuredContent using code; do not print it into chat. '
@@ -88,6 +94,16 @@ final class Tools {
                     'text' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 65535),
                     'private' => array('type' => 'boolean')),
                 array('issue_id', 'text'), true, false);
+            $this->definitions[] = self::tool('mantis_set_relationship',
+                'Create or change a native relationship between two accessible issues. Discover types first. '
+                . 'An existing link between the pair is updated, so read existing relationships before replacing its type.',
+                array('issue_id' => $id, 'target_issue_id' => $id,
+                    'type_id' => array('type' => 'integer', 'minimum' => 0)),
+                array('issue_id', 'target_issue_id', 'type_id'), true, true);
+            $this->definitions[] = self::tool('mantis_delete_relationship',
+                'Delete the specified native relationship only when requested by the user. Both endpoint issues must be accessible. '
+                . 'Discover the relationship id and direction first.',
+                array('issue_id' => $id, 'relationship_id' => $id), array('issue_id', 'relationship_id'), true, true);
             $this->definitions[] = self::tool('mantis_upload_attachment',
                 'Attach one user-supplied file to an existing accessible issue as the token owner. '
                 . 'Use code to read the original local file, compute SHA-256 and base64-encode its bytes; '

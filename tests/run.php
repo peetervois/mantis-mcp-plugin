@@ -56,7 +56,7 @@ test_case('rejects missing and malformed initialize params', function() {
 
 test_case('lists valid read-only schemas and never changes validation after discovery', function() {
     $response = decoded(send_request(rpc('tools/list')));
-    same(7, count($response->result->tools));
+    same(9, count($response->result->tools));
     foreach ($response->result->tools as $tool) {
         same('object', $tool->inputSchema->type);
         check($tool->inputSchema->properties instanceof stdClass);
@@ -264,8 +264,8 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(11, count($tools));
-    foreach (array_slice($tools, 7) as $tool) {
+    same(15, count($tools));
+    foreach (array_slice($tools, 9) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
         same(false, $tool->annotations->idempotentHint);
     }
@@ -329,6 +329,7 @@ test_case('uses native note authorship and preserves unspecified note visibility
 
 require __DIR__ . '/download.php';
 require __DIR__ . '/upload.php';
+require __DIR__ . '/relationships.php';
 
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);
