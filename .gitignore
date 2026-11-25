@@ -1,0 +1,7 @@
+/vendor/
+/dist/
+/.phpunit.cache/
+.env
+.env.*
+!.env.example
+*.log
