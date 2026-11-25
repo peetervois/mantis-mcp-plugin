@@ -1,0 +1,158 @@
+<?php
+/**
+ * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) 2026, Peeter Vois
+ */
+
+namespace Tauria\MantisMcp;
+
+/**
+ * An explicit allow-list: callers cannot choose REST functions, URLs or config keys.
+ */
+final class Tools {
+    private $definitions;
+
+    public function __construct($enableWrites = false) {
+        $id = array('type' => 'integer', 'minimum' => 1);
+        $project = array('type' => 'integer', 'minimum' => 0,
+            'description' => 'MantisBT project id; 0 means all accessible projects.');
+        $select = array('type' => 'string', 'minLength' => 1, 'maxLength' => 512,
+            'pattern' => '^[a-zA-Z_][a-zA-Z0-9_]*(,[a-zA-Z_][a-zA-Z0-9_]*)*$',
+            'description' => 'Optional comma-separated MantisBT field names, such as id,summary,status.');
+
+        $this->definitions = array(
+            self::tool('mantis_get_current_user', 'Get the account represented by this API token.',
+                array(), array()),
+            self::tool('mantis_list_projects', 'List only projects accessible to the current account.',
+                array(), array()),
+            self::tool('mantis_get_project', 'Read project details, including categories and versions.',
+                array('project_id' => $id), array('project_id')),
+            self::tool('mantis_get_issue_options',
+                'Get project-specific status, priority, severity, resolution and view-state enum ids.',
+                array('project_id' => $project), array()),
+            self::tool('mantis_list_issues', 'List accessible issues using MantisBT filters and pagination.',
+                array(
+                    'project_id' => $project,
+                    'page' => array('type' => 'integer', 'minimum' => 1),
+                    'page_size' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 100),
+                    'filter_id' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 64,
+                        'description' => 'An existing MantisBT saved filter id or standard filter name.'),
+                    'select' => $select,
+                ), array()),
+            self::tool('mantis_get_issue', 'Read an accessible issue, including permitted notes.',
+                array('issue_id' => $id, 'select' => $select), array('issue_id')),
+        );
+
+        if ($enableWrites) {
+            $fields = array(
+                'summary' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 128),
+                'description' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 65535),
+                'category_id' => $id,
+                'handler_id' => array('type' => 'integer', 'minimum' => 0,
+                    'description' => 'Assignee id; 0 unassigns the issue.'),
+                'status_id' => $id,
+                'priority_id' => $id,
+                'severity_id' => $id,
+                'resolution_id' => $id,
+                'view_state_id' => $id,
+            );
+            $create = $fields;
+            unset($create['status_id'], $create['resolution_id']);
+            $create['project_id'] = $id;
+            $this->definitions[] = self::tool('mantis_create_issue',
+                'Create an issue as the current account. Discover project/category and enum ids first.',
+                $create, array('project_id', 'category_id', 'summary', 'description'), true, false);
+            $this->definitions[] = self::tool('mantis_update_issue',
+                'Change an accessible issue using the current account and normal MantisBT workflow rules.',
+                array('issue_id' => $id,
+                    'changes' => self::objectSchema($fields, array(), 1)),
+                array('issue_id', 'changes'), true, true);
+            $this->definitions[] = self::tool('mantis_add_note',
+                'Add a note as the current account. Set private=true only when a private note is intended.',
+                array('issue_id' => $id,
+                    'text' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 65535),
+                    'private' => array('type' => 'boolean')),
+                array('issue_id', 'text'), true, false);
+        }
+    }
+
+    public function definitions() {
+        return $this->definitions;
+    }
+
+    public function validate($name, $arguments) {
+        foreach ($this->definitions as $definition) {
+            if ($definition['name'] === $name) {
+                self::validateValue($arguments, $definition['inputSchema'], 'arguments');
+                return;
+            }
+        }
+        throw new ProtocolError('Unknown or disabled tool.', -32602);
+    }
+
+    private static function tool($name, $description, $properties, $required,
+        $write = false, $destructive = false) {
+        return array(
+            'name' => $name, 'description' => $description,
+            'inputSchema' => self::objectSchema($properties, $required),
+            'annotations' => array(
+                'readOnlyHint' => !$write,
+                'destructiveHint' => $destructive,
+                'idempotentHint' => !$write,
+                'openWorldHint' => false,
+            ),
+        );
+    }
+
+    private static function objectSchema($properties, $required, $minimum = 0) {
+        return array('type' => 'object', 'properties' => (object) $properties,
+            'required' => $required, 'additionalProperties' => false, 'minProperties' => $minimum);
+    }
+
+    private static function validateValue($value, $schema, $path) {
+        $valid = true;
+        switch ($schema['type']) {
+            case 'object':
+                $valid = $value instanceof \stdClass;
+                if ($valid) {
+                    $properties = (array) $schema['properties'];
+                    foreach ($schema['required'] as $required) {
+                        if (!property_exists($value, $required)) {
+                            throw new ProtocolError($path . '.' . $required . ' is required.', -32602);
+                        }
+                    }
+                    if (count((array) $value) < $schema['minProperties']) {
+                        throw new ProtocolError($path . ' must not be empty.', -32602);
+                    }
+                    foreach ((array) $value as $key => $item) {
+                        if (!array_key_exists($key, $properties)) {
+                            throw new ProtocolError($path . ' contains an unsupported field.', -32602);
+                        }
+                        self::validateValue($item, $properties[$key], $path . '.' . $key);
+                    }
+                }
+                break;
+            case 'integer':
+                $valid = is_int($value)
+                    && (!isset($schema['minimum']) || $value >= $schema['minimum'])
+                    && (!isset($schema['maximum']) || $value <= $schema['maximum']);
+                break;
+            case 'boolean':
+                $valid = is_bool($value);
+                break;
+            case 'string':
+                $valid = is_string($value);
+                if ($valid) {
+                    $length = preg_match_all('/./us', $value);
+                    $valid = $length !== false
+                        && (!isset($schema['minLength']) || $length >= $schema['minLength'])
+                        && (!isset($schema['maxLength']) || $length <= $schema['maxLength'])
+                        && (!isset($schema['pattern']) || preg_match('~' . $schema['pattern'] . '~uD', $value) === 1);
+                }
+                break;
+        }
+        if (!$valid) {
+            throw new ProtocolError($path . ' has an invalid value or type.', -32602);
+        }
+    }
+}
