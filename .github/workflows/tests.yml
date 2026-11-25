@@ -44,3 +44,13 @@ jobs:
           name: MantisMcp-0.1.0
           path: dist/MantisMcp-*.zip
           if-no-files-found: error
+      - name: Build Tauria Tasks ChatGPT plugin
+        if: matrix.php == '8.3'
+        run: python3 scripts/package-chatgpt.py
+      - name: Upload Tauria Tasks ChatGPT plugin
+        if: matrix.php == '8.3'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: TauriaTasks-0.1.0
+          path: dist/tauria-tasks-*.zip
+          if-no-files-found: error

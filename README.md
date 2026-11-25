@@ -11,6 +11,12 @@ tables, server-wide API token, or production Composer installation is required.
 
 [Installation](docs/INSTALL.md) · [ChatGPT connection](docs/CHATGPT.md)
 
+The private ChatGPT plugin is **[Tauria Tasks](chatgpt/tauria-tasks/README.md)**.
+Its portable package source connects to the Tauria MCP endpoint using each
+person's own API-token credential setup. Build it with
+`python3 scripts/package-chatgpt.py`; the output is
+`dist/tauria-tasks-0.1.0.zip`.
+
 ## Warning
 
 This software is developed by AI with very little human code review at the moment.

@@ -1,13 +1,28 @@
 # ChatGPT connection
 
-This repository contains the **MantisBT server plugin**. Install it and verify
-its HTTPS MCP endpoint before creating the corresponding ChatGPT plugin.
-No ChatGPT plugin has been published or connected by this source repository.
+This repository contains the **MantisBT server plugin** and the private
+**Tauria Tasks** ChatGPT plugin source in
+[`chatgpt/tauria-tasks`](../chatgpt/tauria-tasks/README.md).
+The ChatGPT package connects to the installed MantisBT MCP endpoint; it does not
+deploy the PHP server or supply a user's credentials.
 
 Each person connects with their **own MantisBT API token**. An OpenAI API key,
 a shared MantisBT service account and a server-wide MCP token are not needed.
 
 ## Connection
+
+To build the Tauria Tasks package for the target installation:
+
+```bash
+python3 scripts/package-chatgpt.py
+```
+
+The output is `dist/tauria-tasks-0.1.0.zip`. Its endpoint is
+`https://central.tauria.ee/mantis/api/rest/plugins/MantisMcp/mcp`.
+Each user still completes their own credential setup after installing it.
+
+For another MantisBT installation, adapt the package's `mcp.json` URL and verify
+that server before connecting.
 
 Use the installed MCP endpoint, for example:
 
