@@ -36,7 +36,7 @@ final class AttachmentDownload {
     }
 
     /** Call only after the issue's native REST access check has succeeded. */
-    public static function authorize($issueId, $attachmentId, $maxBytes) {
+    public static function authorize($issueId, $attachmentId, $maxBytes, $requireDownload = true) {
         require_api('file_api.php');
         require_api('access_api.php');
         foreach (bug_get_attachments($issueId) as $row) {
@@ -46,7 +46,7 @@ final class AttachmentDownload {
             $owner = (int) $row['user_id'];
             $noteId = (int) $row['bugnote_id'];
             if (!file_can_view_bug_attachments($issueId, $owner)
-                || !file_can_download_bug_attachments($issueId, $owner)) {
+                || ($requireDownload && !file_can_download_bug_attachments($issueId, $owner))) {
                 break;
             }
             if ($noteId > 0) {
@@ -54,7 +54,7 @@ final class AttachmentDownload {
                 if ((int) bugnote_get_field($noteId, 'bug_id') !== $issueId
                     || !access_has_bugnote_level(config_get('view_bug_threshold', null, null, $projectId), $noteId)
                     || !file_can_view_bugnote_attachments($noteId, $owner, $issueId)
-                    || !file_can_download_bugnote_attachments($noteId, $owner)) {
+                    || ($requireDownload && !file_can_download_bugnote_attachments($noteId, $owner))) {
                     break;
                 }
             }
@@ -62,7 +62,7 @@ final class AttachmentDownload {
             if ($size < 0 || $size > $maxBytes) {
                 throw new ToolFailure('Attachment exceeds the configured download size limit.');
             }
-            return array('note_id' => $noteId, 'size' => $size,
+            return array('note_id' => $noteId, 'size' => $size, 'uploader_id' => $owner,
                 'filename' => file_get_display_name($row['filename']));
         }
         throw new ToolFailure('The attachment does not exist or is not accessible to your MantisBT account.');

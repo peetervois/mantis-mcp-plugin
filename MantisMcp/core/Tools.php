@@ -110,6 +110,11 @@ final class Tools {
                 'Delete the specified native relationship only when requested by the user. Both endpoint issues must be accessible. '
                 . 'Discover the relationship id and direction first.',
                 array('issue_id' => $id, 'relationship_id' => $id), array('issue_id', 'relationship_id'), true, true);
+            $this->definitions[] = self::tool('mantis_delete_attachment',
+                'Permanently delete one attachment only on an explicit user request or as cleanup of a disposable test file '
+                . 'created for a user-authorized test. Read its issue and metadata first. Issue ownership, note visibility, '
+                . 'read-only state and native delete permissions apply. This cannot be undone.',
+                array('issue_id' => $id, 'attachment_id' => $id), array('issue_id', 'attachment_id'), true, true);
             $this->definitions[] = self::tool('mantis_upload_attachment',
                 'Attach one user-supplied file to an existing accessible issue as the token owner. '
                 . 'Use code to read the original local file, compute SHA-256 and base64-encode its bytes; '

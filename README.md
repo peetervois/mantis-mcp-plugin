@@ -102,13 +102,16 @@ This additionally exposes:
 | `mantis_update_issue` | Update supported fields using MantisBT's normal rules. |
 | `mantis_set_relationship` | Create or change a native link between accessible issues. |
 | `mantis_delete_relationship` | Delete a selected relationship using native permissions. |
+| `mantis_delete_attachment` | Permanently delete a selected visible attachment using native permissions. |
 | `mantis_add_note` | Add a note as the current user. |
 | `mantis_upload_attachment` | Upload one original file and return verified stored-file metadata. |
 
 Enabling the tools does not grant additional MantisBT permissions. A read-only
 MantisBT account remains read-only. Write schemas do not accept another reporter,
 an arbitrary REST operation, a URL, an upload path or a command to execute.
-Relationship deletion is available; issue, note and attachment deletion are not implemented.
+Issue and note deletion are not implemented. Attachment and relationship deletion
+are explicitly marked destructive; use them only for requested actions or
+cleanup of disposable data created for an authorized test.
 
 See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
 assembly helper, size limits and verification steps.
@@ -116,7 +119,7 @@ See [attachment uploads](docs/UPLOADS.md) for the bounded file input contract,
 preparation helper, size limits and handling of uncertain write results.
 
 See [relationships](docs/RELATIONSHIPS.md) and [workflow inspection](docs/WORKFLOW.md)
-for discovery, permissions and live acceptance. Inspect workflow before status
+and [attachment deletion](docs/DELETION.md) for discovery, permissions and live acceptance. Inspect workflow before status
 changes instead of guessing intermediate states.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for

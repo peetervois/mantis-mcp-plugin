@@ -264,7 +264,7 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(16, count($tools));
+    same(17, count($tools));
     foreach (array_slice($tools, 10) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
         same(false, $tool->annotations->idempotentHint);
@@ -331,6 +331,7 @@ require __DIR__ . '/download.php';
 require __DIR__ . '/upload.php';
 require __DIR__ . '/relationships.php';
 require __DIR__ . '/workflow.php';
+require __DIR__ . '/attachment-delete.php';
 
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

@@ -10,6 +10,7 @@ require_once __DIR__ . '/core/ProjectContext.php';
 require_once __DIR__ . '/core/AttachmentUpload.php';
 require_once __DIR__ . '/core/Relationships.php';
 require_once __DIR__ . '/core/Workflow.php';
+require_once __DIR__ . '/core/AttachmentDelete.php';
 require_once __DIR__ . '/core/Tools.php';
 require_once __DIR__ . '/core/Http.php';
 require_once __DIR__ . '/core/RestApi.php';

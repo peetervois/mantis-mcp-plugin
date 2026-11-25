@@ -95,6 +95,9 @@ final class RestApi {
                 $target = Relationships::target($arguments['issue_id'], $arguments['relationship_id']);
                 $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $target));
                 return Relationships::delete($arguments['issue_id'], $arguments['relationship_id']);
+            case 'mantis_delete_attachment':
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                return AttachmentDelete::delete($arguments['issue_id'], $arguments['attachment_id']);
             case 'mantis_upload_attachment':
                 $this->call('issues', 'GET', array('select' => 'id'), null,
                     array('id' => $arguments['issue_id']));
