@@ -12,9 +12,18 @@ For an installation at `/var/www/html/mantis`, the entry point must be:
 /var/www/html/mantis/plugins/MantisMcp/MantisMcp.php
 ```
 
-Alternatively, extract `MantisMcp-0.3.0.zip` into `plugins/`. Build the package on
+Alternatively, extract `MantisMcp-0.4.0.zip` into `plugins/`. Build the package on
 a development machine using `python3 scripts/package.py`, or download it from
 the GitHub Actions artifacts for the branch being tested.
+
+The server artifact now contains the installable `MantisMcp/` folder directly;
+there is no inner installer ZIP to extract. Preserve hidden files, including
+`MantisMcp/.htaccess`, when copying. Replace the plugin directory in the active
+MantisBT installation and upgrade in plugin management if offered. Restart the
+PHP handler serving MantisBT (for PHP-FPM, typically `systemctl restart php-fpm`)
+after deployment so OPcache cannot keep old classes. Verify the displayed plugin
+version, then refresh the remote MCP connection's approved tools if needed.
+Plugin updates do not require a new API token or a separate browser login.
 
 Log in to MantisBT as an administrator, open **Manage → Manage Plugins**, and
 install **Mantis MCP**.
