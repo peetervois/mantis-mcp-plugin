@@ -18,8 +18,9 @@ person's own API-token credential setup. Build it with
 `dist/tauria-tasks-0.1.1.zip`.
 
 **ChatGPT web status:** the uploaded package is currently marked **Desktop only**
-and web installation fails before authentication. A registered remote MCP app
-connection is still required. See the [connection status and setup notes](docs/CHATGPT.md).
+and web installation fails before authentication. Register the remote connection
+using **Plugins → + Add → custom plugin** with **API key** authentication. See
+the [connection setup and current status](docs/CHATGPT.md).
 
 ## Warning
 

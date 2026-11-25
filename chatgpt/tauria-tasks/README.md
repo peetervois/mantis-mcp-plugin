@@ -11,11 +11,16 @@ installation failed before a credential field appeared. A registered remote MCP
 app connection and a supported authentication flow are still needed for web use.
 The package's API-key declaration alone does not create that connection.
 
-Register the server through **Plugins → + → Add custom MCP server** in the
-intended workspace. Check the authentication options that are actually offered.
-The server requires a personal MantisBT API token; **No authentication** cannot
-connect to this endpoint. If only OAuth is supported, a compatible server-side
-OAuth flow is required before continuing.
+Use **Plugins → + Add** and the custom-plugin flow that supports **API key**
+authentication. Set the endpoint above and the Bearer scheme if requested.
+Confirm that each user can supply their own personal MantisBT token. Finish the
+authenticated tool scan and retain the resulting plugin link or app ID for the
+registered remote connection. The separate form offering only OAuth and No
+authentication is not the required setup path.
+
+Set the name to **Tauria Tasks**, the description to **Tasks and issues in
+MantisBT**, and use the supplied **IconLDC-bt3.png** as its logo. Keep the token
+in secure connection settings. An OpenAI API key is not required.
 
 The package includes the original supplied Tauria logo, with explicit light and
 dark icon references. The directory still displayed its default blue icon; the
