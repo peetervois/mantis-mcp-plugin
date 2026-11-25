@@ -23,7 +23,7 @@ function test_case($name, callable $test) {
 
 test_case('registers a native MantisBT plugin and REST hook', function() {
     $plugin = new MantisMcpPlugin('MantisMcp');
-    same('0.2.0', $plugin->version);
+    same('0.3.0', $plugin->version);
     same('2.26.4', $plugin->requires['MantisCore']);
     same('routes', $plugin->hooks()['EVENT_REST_API_ROUTES']);
     same(OFF, $plugin->config()['enable_write_tools']);
@@ -264,7 +264,7 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(10, count($tools));
+    same(11, count($tools));
     foreach (array_slice($tools, 7) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
         same(false, $tool->annotations->idempotentHint);
@@ -328,6 +328,7 @@ test_case('uses native note authorship and preserves unspecified note visibility
 });
 
 require __DIR__ . '/download.php';
+require __DIR__ . '/upload.php';
 
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

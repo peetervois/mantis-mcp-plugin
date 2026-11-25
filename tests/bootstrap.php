@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  * Copyright (c) 2026, Peeter Vois
  *
- * Integration harness: real Slim 3 and MantisBT 2.26.4's AuthMiddleware and
+ * Integration harness: real Slim 3 and the selected MantisBT AuthMiddleware and
  * MantisPlugin base class, with a deliberately small in-memory Mantis datastore.
  */
 
@@ -20,7 +20,7 @@ $autoload = dirname(__DIR__) . '/vendor/autoload.php';
 $mantis = getenv('MANTISBT_SOURCE');
 if (!is_file($autoload) || !$mantis
     || !is_file($mantis . '/api/rest/restcore/AuthMiddleware.php')) {
-    fwrite(STDERR, "Run composer install and set MANTISBT_SOURCE to a MantisBT 2.26.4 checkout.\n");
+    fwrite(STDERR, "Run composer install and set MANTISBT_SOURCE to a supported MantisBT checkout.\n");
     exit(1);
 }
 require $autoload;
@@ -38,6 +38,8 @@ define('LOGIN_METHOD_COOKIE', 'cookie');
 define('LOGIN_METHOD_API_TOKEN', 'api-token');
 define('LOGIN_METHOD_ANONYMOUS', 'anonymous');
 define('ATTRIBUTE_FORCE_API_ENABLED', 'force_enable_api');
+define('HEADER_DEPRECATION', 'Deprecation');
+define('HEADER_LINK', 'Link');
 
 function require_api($name) {
     // Core dependencies are supplied by the in-memory test datastore below.
@@ -45,9 +47,16 @@ function require_api($name) {
 require $mantis . '/core/classes/MantisPlugin.class.php';
 require $mantis . '/api/rest/restcore/AuthMiddleware.php';
 require $mantis . '/core/file_api.php';
+require __DIR__ . '/upload-storage.php';
 require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
 
 function reset_state() {
+    if (isset($GLOBALS['test_mantis']['storage_dir'])) {
+        foreach (glob($GLOBALS['test_mantis']['storage_dir'] . '/*') as $file) {
+            unlink($file);
+        }
+        rmdir($GLOBALS['test_mantis']['storage_dir']);
+    }
     $GLOBALS['test_mantis'] = array(
         'tokens' => array('alice-key' => 1, 'bob-key' => 2, 'disabled-key' => 3),
         'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled'),
@@ -56,6 +65,11 @@ function reset_state() {
         'max_download_bytes' => 5242880, 'download_threshold' => 25,
         'allow_download_own' => false, 'attachments' => array(),
         'file_response_override' => null,
+        'max_upload_bytes' => 524288, 'upload_threshold' => 25,
+        'max_file_size' => 5242880, 'allow_uploads' => true,
+        'readonly' => false, 'file_method' => DATABASE, 'last_file_id' => 300,
+        'storage_failure' => null, 'attachment_cache' => array(), 'use_attachment_cache' => false,
+        'disallowed_files' => 'svg', 'allowed_files' => '', 'upload_paths' => array(),
     );
     $bytes = str_repeat(implode('', array_map('chr', range(0, 255))), 1385) . 'final-bytes';
     foreach (array(array(219, 94, 1302, array(1)), array(220, 96, 1303, array(1)),
@@ -101,12 +115,26 @@ function config_get($name, $default = null, $user = null, $project = null) {
         'download_attachments_threshold' => $GLOBALS['test_mantis']['download_threshold'],
         'allow_view_own_attachments' => false,
         'allow_download_own_attachments' => $GLOBALS['test_mantis']['allow_download_own'],
-        'view_bug_threshold' => 10, 'document_files_prefix' => 'doc');
+        'view_bug_threshold' => 10, 'document_files_prefix' => 'doc',
+        'allow_file_upload' => $GLOBALS['test_mantis']['allow_uploads'],
+        'allow_reporter_upload' => OFF,
+        'upload_bug_file_threshold' => $GLOBALS['test_mantis']['upload_threshold'],
+        'max_file_size' => $GLOBALS['test_mantis']['max_file_size'],
+        'allowed_files' => $GLOBALS['test_mantis']['allowed_files'],
+        'disallowed_files' => $GLOBALS['test_mantis']['disallowed_files'],
+        'file_upload_method' => $GLOBALS['test_mantis']['file_method'],
+        'attachments_file_permissions' => 0400);
     return isset($values[$name]) ? $values[$name] : $default;
 }
 function bug_get_attachments($issueId) {
-    return array_values(array_filter($GLOBALS['test_mantis']['attachments'],
+    $state = &$GLOBALS['test_mantis'];
+    if ($state['use_attachment_cache'] && isset($state['attachment_cache'][$issueId])) {
+        return $state['attachment_cache'][$issueId];
+    }
+    $rows = array_values(array_filter($state['attachments'],
         function($row) use ($issueId) { return $row['issue_id'] === $issueId; }));
+    $state['attachment_cache'][$issueId] = $rows;
+    return $rows;
 }
 function bug_get_field($issueId, $field) {
     return $field === 'project_id' ? 1 : null;
@@ -142,6 +170,9 @@ function plugin_config_get($name, $default = null, $global = false) {
     }
     if ($name === 'max_download_bytes') {
         return $GLOBALS['test_mantis']['max_download_bytes'];
+    }
+    if ($name === 'max_upload_bytes') {
+        return $GLOBALS['test_mantis']['max_upload_bytes'];
     }
     return $default;
 }

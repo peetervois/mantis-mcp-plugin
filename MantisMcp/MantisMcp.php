@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/core/Protocol.php';
 require_once __DIR__ . '/core/AttachmentDownload.php';
+require_once __DIR__ . '/core/AttachmentUpload.php';
 require_once __DIR__ . '/core/Tools.php';
 require_once __DIR__ . '/core/Http.php';
 require_once __DIR__ . '/core/RestApi.php';
@@ -28,6 +29,7 @@ class MantisMcpPlugin extends MantisPlugin {
             'enable_write_tools' => OFF,
             'max_request_bytes' => 1048576,
             'max_download_bytes' => \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES,
+            'max_upload_bytes' => \Tauria\MantisMcp\AttachmentUpload::DEFAULT_MAX_BYTES,
         );
     }
 
@@ -52,8 +54,10 @@ class MantisMcpPlugin extends MantisPlugin {
         $app->add(array($http, 'guard'));
         $maxDownload = plugin_config_get('max_download_bytes',
             \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, true);
-        $endpoint = function($request, $response, $args) use ($http, $maxDownload) {
-            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload);
+        $maxUpload = plugin_config_get('max_upload_bytes',
+            \Tauria\MantisMcp\AttachmentUpload::DEFAULT_MAX_BYTES, true);
+        $endpoint = function($request, $response, $args) use ($http, $maxDownload, $maxUpload) {
+            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload, $maxUpload);
             return $http->handle($request, $response, array($api, 'execute'));
         };
         $app->group(plugin_route_group(), function() use ($app, $endpoint) {

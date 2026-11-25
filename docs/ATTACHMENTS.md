@@ -26,15 +26,14 @@ original file bytes are returned, not just metadata or a link requiring another
 login. The text content block contains metadata only; binary chunks live in
 `structuredContent`. There are no public URLs or credentials in URLs.
 
-The first request for the task's current test image is:
+For example, after discovering attachment 456 on accessible issue 123:
 
 ```json
-{"issue_id": 1006, "attachment_id": 220}
+{"issue_id": 123, "attachment_id": 456}
 ```
 
-The JPEG is `LOGO_TAURIA_OÜ.jpg`, expected size 354,449 bytes, attached to note
-1303. Issue 1005/note 1302/attachment 219 is an additional fixture. The caller
-must be able to read each issue and note; these ids do not confer permission.
+Replace these example ids with the values from the issue response. The caller
+must be able to read the issue and note; ids do not confer permission.
 
 ## Materialize chunks in a client workspace
 
@@ -75,16 +74,16 @@ to every resumed request. No cross-request file or account cache is used.
 
 ## Deploy and verify
 
-Replace the installed `plugins/MantisMcp` directory with the 0.2.0 package and
+Replace the installed `plugins/MantisMcp` directory with the 0.3.0 package and
 upgrade the plugin in MantisBT's plugin manager if offered. Refresh the existing
 Tauria Tasks connection's tool list using its management settings; confirm
 `mantis_download_attachment` appears. Keep the working API-key remote connection.
 
-Then request attachment 220 from issue 1006 in a fresh Work discussion. Verify
-the saved JPEG and size, and record its SHA-256. Check another account cannot
+Then request an image attachment from an accessible test issue in a fresh Work
+discussion. Verify the saved image and size, and record its SHA-256. Check another account cannot
 download inaccessible issues or private-note attachments.
 
 Local tests verify binary reconstruction, native file-permission helpers and
-client materialization against test data. Downloading the live JPEG through
-Tauria Tasks remains pending until deployment and tool refresh; a local test is
-not an end-to-end production verification.
+client materialization against test data. Deployment and an authenticated live
+download are separate acceptance checks; a local test is not an end-to-end
+production verification.

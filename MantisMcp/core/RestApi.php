@@ -15,12 +15,15 @@ final class RestApi {
     private $responseFactory;
     private $handlers;
     private $maxDownloadBytes;
+    private $maxUploadBytes;
 
     public function __construct($request, ?callable $responseFactory = null, array $handlers = array(),
-        $maxDownloadBytes = AttachmentDownload::DEFAULT_MAX_BYTES) {
+        $maxDownloadBytes = AttachmentDownload::DEFAULT_MAX_BYTES,
+        $maxUploadBytes = AttachmentUpload::DEFAULT_MAX_BYTES) {
         $this->request = $request;
         $this->responseFactory = $responseFactory ?: function() { return new \Slim\Http\Response(); };
         $this->maxDownloadBytes = AttachmentDownload::limit($maxDownloadBytes);
+        $this->maxUploadBytes = AttachmentUpload::limit($maxUploadBytes);
         $this->handlers = $handlers + array(
             'user' => 'rest_user_get_me',
             'projects' => 'rest_projects_get',
@@ -74,6 +77,10 @@ final class RestApi {
                     array('id' => $issueId, 'file_id' => $attachmentId));
                 return AttachmentDownload::chunk($issueId, $attachmentId, $info, $data,
                     $offset, $length, $expected, $this->maxDownloadBytes);
+            case 'mantis_upload_attachment':
+                $this->call('issues', 'GET', array('select' => 'id'), null,
+                    array('id' => $arguments['issue_id']));
+                return AttachmentUpload::execute($arguments['issue_id'], $arguments, $this->maxUploadBytes);
             case 'mantis_create_issue':
                 $payload = $this->fields($arguments);
                 $payload['project'] = array('id' => $arguments['project_id']);

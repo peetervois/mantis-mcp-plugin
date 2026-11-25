@@ -5,8 +5,8 @@ endpoint. Each caller authenticates with their own personal MantisBT API token.
 The plugin uses MantisBT's existing REST authentication and REST handlers, so
 operations run as the token owner with normal MantisBT permissions.
 
-Target: **MantisBT 2.26.4**, PHP **7.4+**, with REST API enabled. Other MantisBT
-versions have not yet been verified. No Node.js, separate service, database
+Test targets: **MantisBT 2.26.4** with PHP **7.4+**, and **MantisBT 2.29.0** with
+PHP **8.1+**, with REST API enabled. No Node.js, separate service, database
 tables, server-wide API token, or production Composer installation is required.
 
 [Installation](docs/INSTALL.md) · [ChatGPT connection](docs/CHATGPT.md)
@@ -98,14 +98,17 @@ This additionally exposes:
 | `mantis_create_issue` | Create an issue as the current user. |
 | `mantis_update_issue` | Update supported fields using MantisBT's normal rules. |
 | `mantis_add_note` | Add a note as the current user. |
+| `mantis_upload_attachment` | Upload one original file and return verified stored-file metadata. |
 
 Enabling the tools does not grant additional MantisBT permissions. A read-only
 MantisBT account remains read-only. Write schemas do not accept another reporter,
 an arbitrary REST operation, a URL, an upload path or a command to execute.
-Deletion and file upload are not implemented in this version.
+Deletion is not implemented in this version.
 
 See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
 assembly helper, size limits and verification steps.
+See [attachment uploads](docs/UPLOADS.md) for the bounded file input contract,
+preparation helper, size limits and handling of uncertain write results.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.
@@ -149,14 +152,17 @@ MANTISBT_SOURCE=../mantisbt-2.26.4 composer test
 python3 scripts/package.py
 ```
 
-Tests use the actual MantisBT 2.26.4 `MantisPlugin` base class and
+Tests use the actual MantisBT 2.26.4 and 2.29.0 `MantisPlugin` base class and
 `AuthMiddleware` with real Slim HTTP requests and an in-memory test datastore.
 They cover protocol handling, authentication, token revocation, account
-separation, input bounds, REST dispatch and write-tool gating.
+separation, input bounds, REST dispatch and write-tool gating. Upload tests
+execute each version's actual native command, file API, MIME detection and
+DATABASE/DISK storage code against a fixture database boundary. Python tests
+verify client payload preparation and a byte-for-byte upload/download contract.
 They do **not** replace an installation test against a real MantisBT database.
-The integration has not yet been deployed to the target MantisBT instance.
+Production deployment and end-to-end acceptance remain separate from the harness.
 
-The package is written to `dist/MantisMcp-0.2.0.zip`. It contains only the
+The package is written to `dist/MantisMcp-0.3.0.zip`. It contains only the
 installable plugin directory, its license, documentation and this README; no tokens, development
 dependencies or test data are included.
 

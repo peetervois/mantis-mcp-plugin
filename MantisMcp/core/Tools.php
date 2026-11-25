@@ -46,7 +46,8 @@ final class Tools {
                 . 'Read content_base64 from structuredContent using code; do not print it into chat. '
                 . 'Start at offset 0, then pass next_offset and expected_sha256 from the first response. '
                 . 'Decode and concatenate chunks, verify total size and SHA-256, and save using filename. '
-                . 'Use attachment ids from mantis_get_issue. Issue and private-note permissions apply.',
+                . 'Use attachment ids from mantis_get_issue. For issue analysis, download relevant screenshots '
+                . 'and inspect the saved images with a vision-capable viewer. Issue and private-note permissions apply.',
                 array('issue_id' => $id, 'attachment_id' => $id,
                     'offset' => array('type' => 'integer', 'minimum' => 0),
                     'length' => array('type' => 'integer', 'minimum' => 1,
@@ -87,6 +88,31 @@ final class Tools {
                     'text' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 65535),
                     'private' => array('type' => 'boolean')),
                 array('issue_id', 'text'), true, false);
+            $this->definitions[] = self::tool('mantis_upload_attachment',
+                'Attach one user-supplied file to an existing accessible issue as the token owner. '
+                . 'Use code to read the original local file, compute SHA-256 and base64-encode its bytes; '
+                . 'do not invent file content or print encoded data in chat. The default decoded limit is '
+                . '512 KiB; server, PHP and MantisBT limits also apply. The server cannot read client paths or URLs. '
+                . 'Returns verified stored-file metadata, including an attachment id for download/readback. '
+                . 'Native MantisBT may rename duplicate filenames. This write is not idempotent: after a timeout '
+                . 'or uncertain result, read the issue before deciding whether to retry. Does not modify existing notes.',
+                array('issue_id' => $id,
+                    'filename' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 250),
+                    'mime_type' => array('type' => 'string', 'minLength' => 3, 'maxLength' => 127,
+                        'pattern' => '^[a-zA-Z0-9!#$&^_.+\-]+/[a-zA-Z0-9!#$&^_.+\-]+$'),
+                    'content_base64' => array('type' => 'string', 'minLength' => 4,
+                        'maxLength' => AttachmentUpload::MAX_ENCODED_BYTES),
+                    'sha256' => array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$')),
+                array('issue_id', 'filename', 'mime_type', 'content_base64', 'sha256'), true, false);
+            $receipt = array();
+            foreach (array('issue_id', 'attachment_id', 'note_id', 'reporter_id', 'size') as $field) {
+                $receipt[$field] = array('type' => 'integer', 'minimum' => 0);
+            }
+            foreach (array('filename', 'mime_type', 'sha256') as $field) {
+                $receipt[$field] = array('type' => 'string');
+            }
+            $this->definitions[count($this->definitions) - 1]['outputSchema'] =
+                self::objectSchema($receipt, array_keys($receipt));
         }
     }
 
