@@ -16,7 +16,7 @@ class ToolFailure extends \RuntimeException {
  * Stateless MCP/JSON-RPC dispatcher. A new instance is created per HTTP request.
  */
 final class Protocol {
-    const VERSION = '0.1.0';
+    const VERSION = '0.2.0';
     const PROTOCOL_VERSION = '2025-06-18';
     const SUPPORTED_VERSIONS = array('2025-06-18', '2025-03-26', '2025-11-25');
 
@@ -115,6 +115,9 @@ final class Protocol {
     }
 
     private static function toolResult($data) {
+        if ($data instanceof DownloadChunk) {
+            return $data->result();
+        }
         $structured = $data instanceof \stdClass ? $data : (object) array('data' => $data);
         $text = json_encode($structured, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($text === false) {

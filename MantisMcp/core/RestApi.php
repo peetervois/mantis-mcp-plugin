@@ -14,14 +14,18 @@ final class RestApi {
     private $request;
     private $responseFactory;
     private $handlers;
+    private $maxDownloadBytes;
 
-    public function __construct($request, ?callable $responseFactory = null, array $handlers = array()) {
+    public function __construct($request, ?callable $responseFactory = null, array $handlers = array(),
+        $maxDownloadBytes = AttachmentDownload::DEFAULT_MAX_BYTES) {
         $this->request = $request;
         $this->responseFactory = $responseFactory ?: function() { return new \Slim\Http\Response(); };
+        $this->maxDownloadBytes = AttachmentDownload::limit($maxDownloadBytes);
         $this->handlers = $handlers + array(
             'user' => 'rest_user_get_me',
             'projects' => 'rest_projects_get',
             'issues' => 'rest_issue_get',
+            'files' => 'rest_issue_files_get',
             'options' => 'rest_config_get',
             'create' => 'rest_issue_add',
             'update' => 'rest_issue_update',
@@ -55,6 +59,21 @@ final class RestApi {
             case 'mantis_get_issue':
                 $query = isset($arguments['select']) ? array('select' => $arguments['select']) : array();
                 return $this->call('issues', 'GET', $query, null, array('id' => $arguments['issue_id']));
+            case 'mantis_download_attachment':
+                $issueId = $arguments['issue_id'];
+                $attachmentId = $arguments['attachment_id'];
+                $offset = isset($arguments['offset']) ? $arguments['offset'] : 0;
+                $length = isset($arguments['length']) ? $arguments['length'] : AttachmentDownload::CHUNK_BYTES;
+                $expected = isset($arguments['expected_sha256']) ? $arguments['expected_sha256'] : null;
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $issueId));
+                $info = AttachmentDownload::authorize($issueId, $attachmentId, $this->maxDownloadBytes);
+                if ($offset > $info['size']) {
+                    throw new ToolFailure('Download offset is beyond the end of the attachment.');
+                }
+                $data = $this->call('files', 'GET', array(), null,
+                    array('id' => $issueId, 'file_id' => $attachmentId));
+                return AttachmentDownload::chunk($issueId, $attachmentId, $info, $data,
+                    $offset, $length, $expected, $this->maxDownloadBytes);
             case 'mantis_create_issue':
                 $payload = $this->fields($arguments);
                 $payload['project'] = array('id' => $arguments['project_id']);

@@ -23,7 +23,7 @@ function test_case($name, callable $test) {
 
 test_case('registers a native MantisBT plugin and REST hook', function() {
     $plugin = new MantisMcpPlugin('MantisMcp');
-    same('0.1.0', $plugin->version);
+    same('0.2.0', $plugin->version);
     same('2.26.4', $plugin->requires['MantisCore']);
     same('routes', $plugin->hooks()['EVENT_REST_API_ROUTES']);
     same(OFF, $plugin->config()['enable_write_tools']);
@@ -56,7 +56,7 @@ test_case('rejects missing and malformed initialize params', function() {
 
 test_case('lists valid read-only schemas and never changes validation after discovery', function() {
     $response = decoded(send_request(rpc('tools/list')));
-    same(6, count($response->result->tools));
+    same(7, count($response->result->tools));
     foreach ($response->result->tools as $tool) {
         same('object', $tool->inputSchema->type);
         check($tool->inputSchema->properties instanceof stdClass);
@@ -264,8 +264,8 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(9, count($tools));
-    foreach (array_slice($tools, 6) as $tool) {
+    same(10, count($tools));
+    foreach (array_slice($tools, 7) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
         same(false, $tool->annotations->idempotentHint);
     }
@@ -326,6 +326,8 @@ test_case('uses native note authorship and preserves unspecified note visibility
     $call = end($GLOBALS['test_mantis']['calls']);
     same(array('name' => 'private'), $call['payload']['view_state']);
 });
+
+require __DIR__ . '/download.php';
 
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/core/Protocol.php';
+require_once __DIR__ . '/core/AttachmentDownload.php';
 require_once __DIR__ . '/core/Tools.php';
 require_once __DIR__ . '/core/Http.php';
 require_once __DIR__ . '/core/RestApi.php';
@@ -26,6 +27,7 @@ class MantisMcpPlugin extends MantisPlugin {
         return array(
             'enable_write_tools' => OFF,
             'max_request_bytes' => 1048576,
+            'max_download_bytes' => \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES,
         );
     }
 
@@ -48,8 +50,10 @@ class MantisMcpPlugin extends MantisPlugin {
         // App middleware is LIFO. Register before MantisBT's AuthMiddleware runs,
         // to normalize Bearer headers only for this endpoint and disallow guest/cookie auth.
         $app->add(array($http, 'guard'));
-        $endpoint = function($request, $response, $args) use ($http) {
-            $api = new \Tauria\MantisMcp\RestApi($request);
+        $maxDownload = plugin_config_get('max_download_bytes',
+            \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, true);
+        $endpoint = function($request, $response, $args) use ($http, $maxDownload) {
+            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload);
             return $http->handle($request, $response, array($api, 'execute'));
         };
         $app->group(plugin_route_group(), function() use ($app, $endpoint) {

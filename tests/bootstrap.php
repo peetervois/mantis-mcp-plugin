@@ -44,6 +44,7 @@ function require_api($name) {
 }
 require $mantis . '/core/classes/MantisPlugin.class.php';
 require $mantis . '/api/rest/restcore/AuthMiddleware.php';
+require $mantis . '/core/file_api.php';
 require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
 
 function reset_state() {
@@ -52,7 +53,20 @@ function reset_state() {
         'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled'),
         'current' => 0, 'writes' => false, 'calls' => array(),
         'max_bytes' => 1048576, 'forced_user' => null,
+        'max_download_bytes' => 5242880, 'download_threshold' => 25,
+        'allow_download_own' => false, 'attachments' => array(),
+        'file_response_override' => null,
     );
+    $bytes = str_repeat(implode('', array_map('chr', range(0, 255))), 1385) . 'final-bytes';
+    foreach (array(array(219, 94, 1302, array(1)), array(220, 96, 1303, array(1)),
+        array(221, 96, 0, array(1, 2)), array(222, 95, 0, array(2))) as $file) {
+        $GLOBALS['test_mantis']['attachments'][$file[0]] = array(
+            'id' => $file[0], 'issue_id' => $file[1], 'bugnote_id' => $file[2],
+            'note_readers' => $file[3], 'user_id' => $file[1] === 95 ? 2 : 1,
+            'filename' => 'LOGO_TAURIA_OÜ.jpg', 'file_type' => 'image/jpeg; charset=binary',
+            'filesize' => strlen($bytes), 'bytes' => $bytes,
+        );
+    }
 }
 
 function api_token_get_user($token) {
@@ -82,12 +96,52 @@ function mci_has_readonly_access() {
 function config_get_global($name, $default = null) {
     return $name === 'path' ? 'https://central.tauria.ee/mantis/' : $default;
 }
+function config_get($name, $default = null, $user = null, $project = null) {
+    $values = array('view_attachments_threshold' => 10,
+        'download_attachments_threshold' => $GLOBALS['test_mantis']['download_threshold'],
+        'allow_view_own_attachments' => false,
+        'allow_download_own_attachments' => $GLOBALS['test_mantis']['allow_download_own'],
+        'view_bug_threshold' => 10, 'document_files_prefix' => 'doc');
+    return isset($values[$name]) ? $values[$name] : $default;
+}
+function bug_get_attachments($issueId) {
+    return array_values(array_filter($GLOBALS['test_mantis']['attachments'],
+        function($row) use ($issueId) { return $row['issue_id'] === $issueId; }));
+}
+function bug_get_field($issueId, $field) {
+    return $field === 'project_id' ? 1 : null;
+}
+function bugnote_get_field($noteId, $field) {
+    foreach ($GLOBALS['test_mantis']['attachments'] as $file) {
+        if ($file['bugnote_id'] === $noteId) {
+            return $field === 'bug_id' ? $file['issue_id'] : null;
+        }
+    }
+    return null;
+}
+function access_has_bug_level($threshold, $issueId, $userId = null) {
+    $userId = $userId === null ? auth_get_current_user_id() : $userId;
+    return $threshold <= 55 && ($issueId === 93 + $userId || $issueId === 96);
+}
+function access_has_bugnote_level($threshold, $noteId, $userId = null) {
+    $userId = $userId === null ? auth_get_current_user_id() : $userId;
+    foreach ($GLOBALS['test_mantis']['attachments'] as $file) {
+        if ($file['bugnote_id'] === $noteId) {
+            return access_has_bug_level($threshold, $file['issue_id'], $userId)
+                && in_array($userId, $file['note_readers'], true);
+        }
+    }
+    return false;
+}
 function plugin_config_get($name, $default = null, $global = false) {
     if ($name === 'enable_write_tools') {
         return $GLOBALS['test_mantis']['writes'];
     }
     if ($name === 'max_request_bytes') {
         return $GLOBALS['test_mantis']['max_bytes'];
+    }
+    if ($name === 'max_download_bytes') {
+        return $GLOBALS['test_mantis']['max_download_bytes'];
     }
     return $default;
 }
@@ -123,11 +177,24 @@ function rest_config_get($request, $response, $path) {
 function rest_issue_get($request, $response, $path) {
     record_call('issues', $request, $path);
     $id = isset($path['id']) ? $path['id'] : 93 + auth_get_current_user_id();
-    if ($id !== 93 + auth_get_current_user_id()) {
+    if ($id !== 93 + auth_get_current_user_id() && $id !== 96) {
         return $response->withStatus(404);
     }
     return $response->withJson(array('issues' => array(array('id' => $id,
         'summary' => 'Visible to ' . user_get_username(auth_get_current_user_id())))));
+}
+function rest_issue_files_get($request, $response, $path) {
+    record_call('files', $request, $path);
+    if ($GLOBALS['test_mantis']['file_response_override'] !== null) {
+        return $response->withJson($GLOBALS['test_mantis']['file_response_override']);
+    }
+    // Deliberately grants no extra permission protection: the adapter must enforce it.
+    $file = $GLOBALS['test_mantis']['attachments'][$path['file_id']];
+    return $response->withJson(array('files' => array(array(
+        'id' => $file['id'], 'filename' => file_get_display_name($file['filename']),
+        'size' => $file['filesize'], 'content_type' => $file['file_type'],
+        'content' => base64_encode($file['bytes']),
+    ))));
 }
 function rest_issue_add($request, $response, $path) {
     record_call('create', $request, $path);

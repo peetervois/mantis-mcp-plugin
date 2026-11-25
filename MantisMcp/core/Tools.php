@@ -41,7 +41,21 @@ final class Tools {
                 ), array()),
             self::tool('mantis_get_issue', 'Read an accessible issue, including permitted notes.',
                 array('issue_id' => $id, 'select' => $select), array('issue_id')),
+            self::tool('mantis_download_attachment',
+                'Download original attachment bytes in bounded base64 chunks through this connection. '
+                . 'Read content_base64 from structuredContent using code; do not print it into chat. '
+                . 'Start at offset 0, then pass next_offset and expected_sha256 from the first response. '
+                . 'Decode and concatenate chunks, verify total size and SHA-256, and save using filename. '
+                . 'Use attachment ids from mantis_get_issue. Issue and private-note permissions apply.',
+                array('issue_id' => $id, 'attachment_id' => $id,
+                    'offset' => array('type' => 'integer', 'minimum' => 0),
+                    'length' => array('type' => 'integer', 'minimum' => 1,
+                        'maximum' => AttachmentDownload::CHUNK_BYTES),
+                    'expected_sha256' => array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$',
+                        'description' => 'Required when offset is greater than zero; pins all chunks to the same file.')),
+                array('issue_id', 'attachment_id')),
         );
+        $this->definitions[count($this->definitions) - 1]['outputSchema'] = self::downloadSchema();
 
         if ($enableWrites) {
             $fields = array(
@@ -84,6 +98,10 @@ final class Tools {
         foreach ($this->definitions as $definition) {
             if ($definition['name'] === $name) {
                 self::validateValue($arguments, $definition['inputSchema'], 'arguments');
+                if ($name === 'mantis_download_attachment' && isset($arguments->offset)
+                    && $arguments->offset > 0 && !isset($arguments->expected_sha256)) {
+                    throw new ProtocolError('expected_sha256 is required for a resumed download.', -32602);
+                }
                 return;
             }
         }
@@ -102,6 +120,19 @@ final class Tools {
                 'openWorldHint' => false,
             ),
         );
+    }
+
+    private static function downloadSchema() {
+        $properties = array();
+        foreach (array('issue_id', 'attachment_id', 'note_id', 'size', 'offset', 'bytes_returned') as $key) {
+            $properties[$key] = array('type' => 'integer', 'minimum' => 0);
+        }
+        foreach (array('filename', 'mime_type', 'sha256', 'content_base64') as $key) {
+            $properties[$key] = array('type' => 'string');
+        }
+        $properties['next_offset'] = array('type' => array('integer', 'null'));
+        $properties['complete'] = array('type' => 'boolean');
+        return self::objectSchema($properties, array_keys($properties));
     }
 
     private static function objectSchema($properties, $required, $minimum = 0) {

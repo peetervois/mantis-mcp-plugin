@@ -72,7 +72,7 @@ An OpenAI API key is not involved.
 
 ## Tools
 
-The default configuration exposes six read tools:
+The default configuration exposes seven read tools:
 
 | Tool | Purpose |
 |---|---|
@@ -82,6 +82,7 @@ The default configuration exposes six read tools:
 | `mantis_get_issue_options` | Discover project-specific enum ids. |
 | `mantis_list_issues` | List/filter accessible issues, up to 100 per page. |
 | `mantis_get_issue` | Read an accessible issue and its permitted notes. |
+| `mantis_download_attachment` | Download bounded binary chunks after issue and note permission checks. |
 
 To enable writes, add this inside the existing PHP block in
 `config/config_inc.php`:
@@ -102,6 +103,9 @@ Enabling the tools does not grant additional MantisBT permissions. A read-only
 MantisBT account remains read-only. Write schemas do not accept another reporter,
 an arbitrary REST operation, a URL, an upload path or a command to execute.
 Deletion and file upload are not implemented in this version.
+
+See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
+assembly helper, size limits and verification steps.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.
@@ -152,7 +156,7 @@ separation, input bounds, REST dispatch and write-tool gating.
 They do **not** replace an installation test against a real MantisBT database.
 The integration has not yet been deployed to the target MantisBT instance.
 
-The package is written to `dist/MantisMcp-0.1.0.zip`. It contains only the
+The package is written to `dist/MantisMcp-0.2.0.zip`. It contains only the
 installable plugin directory, its license, documentation and this README; no tokens, development
 dependencies or test data are included.
 
