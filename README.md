@@ -17,6 +17,10 @@ person's own API-token credential setup. Build it with
 `python3 scripts/package-chatgpt.py`; the output is
 `dist/tauria-tasks-0.1.1.zip`.
 
+**ChatGPT web status:** the uploaded package is currently marked **Desktop only**
+and web installation fails before authentication. A registered remote MCP app
+connection is still required. See the [connection status and setup notes](docs/CHATGPT.md).
+
 ## Warning
 
 This software is developed by AI with very little human code review at the moment.

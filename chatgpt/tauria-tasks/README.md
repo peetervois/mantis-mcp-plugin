@@ -1,15 +1,32 @@
 # Tauria Tasks
 
-A private ChatGPT plugin connecting to the PHP MantisBT MCP server at:
+A portable MCP package for the PHP MantisBT MCP server at:
 
 `https://central.tauria.ee/mantis/api/rest/plugins/MantisMcp/mcp`
 
-## Connect your account
+## Current ChatGPT web status
 
-1. Install Tauria Tasks in ChatGPT and open its connection setup.
-2. In MantisBT, open **My Account → API Tokens** and generate a personal token.
-3. Enter that token in ChatGPT's API-key credential field. The connection uses
-   the Bearer scheme; enter the token value without adding `Bearer ` yourself.
+ChatGPT currently classifies this uploaded package as **Desktop only**. Web
+installation failed before a credential field appeared. A registered remote MCP
+app connection and a supported authentication flow are still needed for web use.
+The package's API-key declaration alone does not create that connection.
+
+Register the server through **Plugins → + → Add custom MCP server** in the
+intended workspace. Check the authentication options that are actually offered.
+The server requires a personal MantisBT API token; **No authentication** cannot
+connect to this endpoint. If only OAuth is supported, a compatible server-side
+OAuth flow is required before continuing.
+
+The package includes the original supplied Tauria logo, with explicit light and
+dark icon references. The directory still displayed its default blue icon; the
+rendered branding remains unverified.
+
+## Connect with a compatible MCP client
+
+1. In MantisBT, open **My Account → API Tokens** and generate a personal token.
+2. Configure the endpoint in an MCP client that supports API-key authentication.
+3. Supply the token through the client's secure credential field using the
+   Bearer scheme.
 4. Ask: **Which MantisBT account am I connected as?**
 5. Ask: **List the projects I can access.**
 
@@ -49,7 +66,7 @@ From the repository root:
 python3 scripts/package-chatgpt.py
 ```
 
-This produces `dist/tauria-tasks-0.1.0.zip`, containing the portable manifest and
+This produces `dist/tauria-tasks-0.1.1.zip`, containing the portable manifest and
 remote MCP configuration. No Node.js process or additional server is needed.
 
 Licensed under BSD-3-Clause. Copyright © 2026 Peeter Vois.
