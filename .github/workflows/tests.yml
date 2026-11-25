@@ -1,0 +1,46 @@
+name: PHP plugin checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.1', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ctype, iconv
+          coverage: none
+          tools: composer:v2
+      - name: Install development dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Fetch the supported MantisBT source
+        run: git clone --depth 1 --branch release-2.26.4 https://github.com/mantisbt/mantisbt.git "$RUNNER_TEMP/mantisbt-2.26.4"
+      - name: Lint PHP
+        run: git ls-files -z '*.php' | xargs -0 -n1 php -l
+      - name: Test MCP with the native authentication middleware
+        env:
+          MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt-2.26.4
+        run: composer test
+      - name: Build installable plugin
+        if: matrix.php == '8.3'
+        run: python3 scripts/package.py
+      - name: Upload installable plugin
+        if: matrix.php == '8.3'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MantisMcp-0.1.0
+          path: dist/MantisMcp-*.zip
+          if-no-files-found: error
