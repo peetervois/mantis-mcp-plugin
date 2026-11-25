@@ -1,0 +1,20 @@
+{
+    "name": "peetervois/mantis-mcp-plugin",
+    "description": "A PHP MantisBT plugin exposing per-user authenticated MCP tools",
+    "type": "project",
+    "license": "BSD-3-Clause",
+    "require": {
+        "php": ">=7.4",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "slim/slim": "^3.12"
+    },
+    "scripts": {
+        "test": "php tests/run.php"
+    },
+    "config": {
+        "allow-plugins": false,
+        "sort-packages": true
+    }
+}
