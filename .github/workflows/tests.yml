@@ -51,6 +51,6 @@ jobs:
         if: matrix.php == '8.3'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: TauriaTasks-0.1.0
+          name: TauriaTasks-0.1.1
           path: dist/tauria-tasks-*.zip
           if-no-files-found: error

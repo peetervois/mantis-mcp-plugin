@@ -17,7 +17,7 @@ To build the Tauria Tasks package for the target installation:
 python3 scripts/package-chatgpt.py
 ```
 
-The output is `dist/tauria-tasks-0.1.0.zip`. Its endpoint is
+The output is `dist/tauria-tasks-0.1.1.zip`. Its endpoint is
 `https://central.tauria.ee/mantis/api/rest/plugins/MantisMcp/mcp`.
 Each user still completes their own credential setup after installing it.
 

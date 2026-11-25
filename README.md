@@ -15,7 +15,7 @@ The private ChatGPT plugin is **[Tauria Tasks](chatgpt/tauria-tasks/README.md)**
 Its portable package source connects to the Tauria MCP endpoint using each
 person's own API-token credential setup. Build it with
 `python3 scripts/package-chatgpt.py`; the output is
-`dist/tauria-tasks-0.1.0.zip`.
+`dist/tauria-tasks-0.1.1.zip`.
 
 ## Warning
 

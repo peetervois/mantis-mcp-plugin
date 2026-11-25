@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "tauria-tasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Work with Tauria MantisBT projects and issues using your personal MantisBT account.",
   "author": {
     "name": "Peeter Vois"
@@ -17,22 +17,24 @@
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "Tauria Tasks",
-        "shortDescription": "Tasks and issues in MantisBT",
-        "longDescription": "Access Tauria's MantisBT projects and issues with your own personal API token. Read the projects and issues your account can access. Create or update issues and add notes when the MantisBT administrator enables those tools and your account has permission.",
-        "developerName": "Peeter Vois",
-        "category": "Productivity",
         "capabilities": [
           "Read",
           "Write"
         ],
+        "category": "Productivity",
+        "composerIcon": "./assets/IconLDC-bt3.png",
         "defaultPrompt": [
           "Which MantisBT account am I connected as?",
           "List the projects I can access.",
           "Show MantisBT issue 94."
         ],
-        "logo": "./assets/tauria-logo.png",
-        "composerIcon": "./assets/tauria-logo.png"
+        "developerName": "Peeter Vois",
+        "displayName": "Tauria Tasks",
+        "logo": "./assets/IconLDC-bt3.png",
+        "longDescription": "Access Tauria's MantisBT projects and issues with your own personal API token. Read the projects and issues your account can access. Create or update issues and add notes when the MantisBT administrator enables those tools and your account has permission.",
+        "shortDescription": "Tasks and issues in MantisBT",
+        "logoDark": "./assets/IconLDC-bt3.png",
+        "composerIconDark": "./assets/IconLDC-bt3.png"
       }
     }
   }
