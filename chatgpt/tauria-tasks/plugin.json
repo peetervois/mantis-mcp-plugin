@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tauria-tasks",
+  "version": "0.1.1",
+  "description": "Work with Tauria MantisBT projects and issues using your personal MantisBT account.",
+  "author": {
+    "name": "Peeter Vois"
+  },
+  "repository": "https://github.com/peetervois/mantis-mcp-plugin",
+  "license": "BSD-3-Clause",
+  "keywords": [
+    "mantisbt",
+    "tasks",
+    "issues",
+    "tauria"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "category": "Productivity",
+        "composerIcon": "./assets/IconLDC-bt3.png",
+        "defaultPrompt": [
+          "Which MantisBT account am I connected as?",
+          "List the projects I can access.",
+          "Show MantisBT issue 94."
+        ],
+        "developerName": "Peeter Vois",
+        "displayName": "Tauria Tasks",
+        "logo": "./assets/IconLDC-bt3.png",
+        "longDescription": "Access Tauria's MantisBT projects and issues with your own personal API token. Read the projects and issues your account can access. Create or update issues and add notes when the MantisBT administrator enables those tools and your account has permission.",
+        "shortDescription": "Tasks and issues in MantisBT",
+        "logoDark": "./assets/IconLDC-bt3.png",
+        "composerIconDark": "./assets/IconLDC-bt3.png"
+      }
+    }
+  }
+}
