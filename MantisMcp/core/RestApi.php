@@ -116,6 +116,13 @@ final class RestApi {
                 if (array_key_exists('private', $arguments)) {
                     $payload['view_state'] = array('name' => $arguments['private'] ? 'private' : 'public');
                 }
+                if (isset($arguments['attachment'])) {
+                    $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                    $attachment = AttachmentUpload::execute($arguments['issue_id'], (array) $arguments['attachment'],
+                        $this->maxUploadBytes, $payload);
+                    return (object) array('issue_id' => $arguments['issue_id'],
+                        'note' => (object) array('id' => $attachment->note_id), 'attachment' => $attachment);
+                }
                 $data = $this->call('note', 'POST', array(), $payload,
                     array('id' => $arguments['issue_id']));
                 $note = new \stdClass();

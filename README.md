@@ -100,11 +100,11 @@ This additionally exposes:
 |---|---|
 | `mantis_create_issue` | Create an issue as the current user. |
 | `mantis_update_issue` | Update supported fields using MantisBT's normal rules. |
+| `mantis_add_note` | Add a note, optionally with an original file, as the current user. |
+| `mantis_upload_attachment` | Upload an original file to an issue or existing editable note. |
 | `mantis_set_relationship` | Create or change a native link between accessible issues. |
 | `mantis_delete_relationship` | Delete a selected relationship using native permissions. |
 | `mantis_delete_attachment` | Permanently delete a selected visible attachment using native permissions. |
-| `mantis_add_note` | Add a note as the current user. |
-| `mantis_upload_attachment` | Upload one original file and return verified stored-file metadata. |
 
 Enabling the tools does not grant additional MantisBT permissions. A read-only
 MantisBT account remains read-only. Write schemas do not accept another reporter,
@@ -117,10 +117,11 @@ See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
 assembly helper, size limits and verification steps.
 See [attachment uploads](docs/UPLOADS.md) for the bounded file input contract,
 preparation helper, size limits and handling of uncertain write results.
-
-See [relationships](docs/RELATIONSHIPS.md) and [workflow inspection](docs/WORKFLOW.md)
-and [attachment deletion](docs/DELETION.md) for discovery, permissions and live acceptance. Inspect workflow before status
-changes instead of guessing intermediate states.
+See [relationships](docs/RELATIONSHIPS.md), [workflow inspection](docs/WORKFLOW.md)
+and [attachment deletion](docs/DELETION.md) for discovery, permissions and live
+acceptance. Inspect workflow before status changes rather than guessing the
+next state. New-note and existing-note image uploads are covered in the upload
+guide; private-note access remains enforced during downloads and deletion.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.
@@ -170,7 +171,9 @@ Tests use the actual MantisBT 2.26.4 and 2.29.0 `MantisPlugin` base class and
 They cover protocol handling, authentication, token revocation, account
 separation, input bounds, REST dispatch and write-tool gating. Upload tests
 execute each version's actual native command, file API, MIME detection and
-DATABASE/DISK storage code against a fixture database boundary. Python tests
+DATABASE/DISK storage code against a fixture database boundary. Workflow tests
+load exact native helper bodies and relationship/note tests use native commands
+with fixture configuration, access, note and relationship storage boundaries. Python tests
 verify client payload preparation and a byte-for-byte upload/download contract.
 They do **not** replace an installation test against a real MantisBT database.
 Production deployment and end-to-end acceptance remain separate from the harness.

@@ -26,6 +26,14 @@ class PrepareAttachmentTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(result["content_base64"]), ICON.read_bytes())
         self.assertEqual(result["sha256"], hashlib.sha256(ICON.read_bytes()).hexdigest())
 
+    def test_existing_note_target_is_explicit_and_positive(self):
+        result = PREPARE.prepare(ICON, 123, note_id=456)
+        self.assertEqual(result["note_id"], 456)
+        self.assertEqual(base64.b64decode(result["content_base64"]), ICON.read_bytes())
+        for value in (0, -1, True, "456"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                PREPARE.prepare(ICON, 123, note_id=value)
+
     def test_unicode_filename_and_all_binary_values(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "Näide-测试.bin"

@@ -10,8 +10,39 @@ $g_plugin_MantisMcp_enable_write_tools = ON;
 
 This exposes a write operation; it does not grant MantisBT upload permission.
 The issue's access, read-only state, upload settings and native file-type rules
-still apply. Files attach to the issue itself (`note_id: 0`), inheriting its
-visibility. This tool does not attach to or modify an existing note.
+still apply. Without a note id, files attach to the issue itself (`note_id: 0`),
+inheriting its visibility. Version 0.4.0 also supports new and existing notes.
+
+## Images and files in notes
+
+To create a note and file together, call `mantis_add_note` with `issue_id`,
+`text`, optional `private`, and an `attachment` object containing the four file
+fields `filename`, `mime_type`, `content_base64` and `sha256`. Omit `private` to
+keep native default note visibility. Native IssueNoteAddCommand handles authorship,
+note/add/upload/private permissions and moderation. Where the native version
+supports moderation, notes requiring moderation cannot silently bypass it to
+attach files. The result contains the new note id and verified attachment
+receipt; do not retry an uncertain response as if no note had been created.
+
+To attach a file to an existing note, pass its positive `note_id` to
+`mantis_upload_attachment`. The helper supports this directly:
+
+```bash
+python3 scripts/prepare-attachment.py screenshot.png --issue-id 123 --note-id 456 --output upload.json
+```
+
+The note must belong to the issue and be visible and editable by the caller.
+The adapter applies the same bugnote_user_edit_threshold for the author or
+update_bugnote_threshold for other authors as native bugnote_update.php, plus
+issue/upload/file checks. It uses native file_attach_files with the note id,
+updates the note modification timestamp and signals the native edit event.
+Existing text, author and visibility are preserved. The attachment inherits
+the note's access restrictions; it is never silently moved to issue level.
+
+For either mode, download the returned attachment id through the normal MCP
+download tool and compare its original bytes/hash. Test private notes with an
+independent account as well as a permitted owner. Test storage failures and
+uncertain outcomes before assuming an entire note/file operation was rolled back.
 
 ## Prepare and submit an original file
 

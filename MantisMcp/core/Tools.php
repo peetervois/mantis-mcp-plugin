@@ -95,10 +95,14 @@ final class Tools {
                     'changes' => self::objectSchema($fields, array(), 1)),
                 array('issue_id', 'changes'), true, true);
             $this->definitions[] = self::tool('mantis_add_note',
-                'Add a note as the current account. Set private=true only when a private note is intended.',
+                'Add a note as the current account. Set private=true only when a private note is intended. '
+                . 'Optional attachment creates the note and original file together, respecting native note visibility and moderation. '
+                . 'Compute base64 and SHA-256 from the user-supplied original file in code. Never print file bytes in chat. '
+                . 'Do not blindly retry after an uncertain response, since it may create another note.',
                 array('issue_id' => $id,
                     'text' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 65535),
-                    'private' => array('type' => 'boolean')),
+                    'private' => array('type' => 'boolean'),
+                    'attachment' => self::objectSchema(self::uploadFileProperties(), array_keys(self::uploadFileProperties()))),
                 array('issue_id', 'text'), true, false);
             $this->definitions[] = self::tool('mantis_set_relationship',
                 'Create or change a native relationship between two accessible issues. Discover types first. '
@@ -122,14 +126,9 @@ final class Tools {
                 . '512 KiB; server, PHP and MantisBT limits also apply. The server cannot read client paths or URLs. '
                 . 'Returns verified stored-file metadata, including an attachment id for download/readback. '
                 . 'Native MantisBT may rename duplicate filenames. This write is not idempotent: after a timeout '
-                . 'or uncertain result, read the issue before deciding whether to retry. Does not modify existing notes.',
-                array('issue_id' => $id,
-                    'filename' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 250),
-                    'mime_type' => array('type' => 'string', 'minLength' => 3, 'maxLength' => 127,
-                        'pattern' => '^[a-zA-Z0-9!#$&^_.+\-]+/[a-zA-Z0-9!#$&^_.+\-]+$'),
-                    'content_base64' => array('type' => 'string', 'minLength' => 4,
-                        'maxLength' => AttachmentUpload::MAX_ENCODED_BYTES),
-                    'sha256' => array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$')),
+                . 'or uncertain result, read the issue before deciding whether to retry. '
+                . 'Optional note_id attaches the file to an existing editable note, preserving its text, author and visibility.',
+                array('issue_id' => $id, 'note_id' => $id) + self::uploadFileProperties(),
                 array('issue_id', 'filename', 'mime_type', 'content_base64', 'sha256'), true, false);
             $receipt = array();
             foreach (array('issue_id', 'attachment_id', 'note_id', 'reporter_id', 'size') as $field) {
@@ -186,6 +185,15 @@ final class Tools {
         $properties['next_offset'] = array('type' => array('integer', 'null'));
         $properties['complete'] = array('type' => 'boolean');
         return self::objectSchema($properties, array_keys($properties));
+    }
+
+    private static function uploadFileProperties() {
+        return array('filename' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 250),
+            'mime_type' => array('type' => 'string', 'minLength' => 3, 'maxLength' => 127,
+                'pattern' => '^[a-zA-Z0-9!#$&^_.+\-]+/[a-zA-Z0-9!#$&^_.+\-]+$'),
+            'content_base64' => array('type' => 'string', 'minLength' => 4,
+                'maxLength' => AttachmentUpload::MAX_ENCODED_BYTES),
+            'sha256' => array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$'));
     }
 
     private static function objectSchema($properties, $required, $minimum = 0) {

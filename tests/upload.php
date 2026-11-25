@@ -129,7 +129,7 @@ test_case('rejects unsafe names, malformed binary and a mismatched content hash 
 test_case('rejects arbitrary file sources, reporter overrides and note targeting in the schema', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     foreach (array(array('path' => '/etc/passwd'), array('url' => 'https://example.com/a.png'),
-        array('reporter_id' => 2), array('note_id' => 1302), array('issue_id' => 0),
+        array('reporter_id' => 2), array('note_id' => 0), array('issue_id' => 0),
         array('mime_type' => "image/png\nBad: header"), array('content_base64' => '')) as $extra) {
         same(-32602, decoded(upload_call($extra))->error->code);
     }
