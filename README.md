@@ -11,6 +11,10 @@ tables, server-wide API token, or production Composer installation is required.
 
 [Installation](docs/INSTALL.md) · [ChatGPT connection](docs/CHATGPT.md)
 
+## Warning
+
+This software is developed by AI with very little human code review at the moment.
+
 ## Install
 
 1. Copy the `MantisMcp` directory into your MantisBT `plugins/` directory.
