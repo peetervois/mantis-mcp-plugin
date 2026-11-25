@@ -48,9 +48,11 @@ require $mantis . '/core/classes/MantisPlugin.class.php';
 require $mantis . '/api/rest/restcore/AuthMiddleware.php';
 require $mantis . '/core/file_api.php';
 require __DIR__ . '/upload-storage.php';
+require __DIR__ . '/management-fixture.php';
 require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
 
 function reset_state() {
+    unset($GLOBALS['g_project_override']);
     if (isset($GLOBALS['test_mantis']['storage_dir'])) {
         foreach (glob($GLOBALS['test_mantis']['storage_dir'] . '/*') as $file) {
             unlink($file);
@@ -70,6 +72,20 @@ function reset_state() {
         'readonly' => false, 'file_method' => DATABASE, 'last_file_id' => 300,
         'storage_failure' => null, 'attachment_cache' => array(), 'use_attachment_cache' => false,
         'disallowed_files' => 'svg', 'allowed_files' => '', 'upload_paths' => array(),
+        'delete_threshold' => 25, 'delete_own' => false, 'notes' => array(),
+        'last_note_id' => 2000, 'note_edits' => array(), 'events' => array(), 'moderation' => array(),
+        'relationships' => array(), 'last_relationship_id' => 400, 'project_configs' => array(),
+        'config' => array('status_enum_string' => '10:new,20:feedback,30:acknowledged,40:confirmed,50:assigned,60:working,70:resolved,80:testing,90:closed',
+            'status_enum_workflow' => array(10 => '50:assigned,90:closed', 20 => '10:new,50:assigned,90:closed',
+                30 => '10:new,90:closed', 40 => '10:new,90:closed', 50 => '20:feedback,60:working,90:closed',
+                60 => '20:feedback,50:assigned,70:resolved,90:closed', 70 => '50:assigned,80:testing,90:closed',
+                80 => '50:assigned,90:closed', 90 => '20:feedback'),
+            'set_status_threshold' => array(), 'bug_submit_status' => 10,
+            'report_bug_threshold' => 25, 'update_bug_status_threshold' => 25,
+            'update_bug_threshold' => 25, 'webservice_readonly_access_level_threshold' => 10,
+            'add_bugnote_threshold' => 25, 'set_view_status_threshold' => 25,
+            'bugnote_user_edit_threshold' => 25, 'update_bugnote_threshold' => 55,
+            'default_bugnote_view_status' => 10, 'reassign_on_feedback' => false),
     );
     $bytes = str_repeat(implode('', array_map('chr', range(0, 255))), 1385) . 'final-bytes';
     foreach (array(array(219, 94, 1302, array(1)), array(220, 96, 1303, array(1)),
@@ -80,6 +96,10 @@ function reset_state() {
             'filename' => 'LOGO_TAURIA_OÜ.jpg', 'file_type' => 'image/jpeg; charset=binary',
             'filesize' => strlen($bytes), 'bytes' => $bytes,
         );
+        if ($file[2] > 0) {
+            $GLOBALS['test_mantis']['notes'][$file[2]] = array('id' => $file[2], 'bug_id' => $file[1],
+                'reporter_id' => 1, 'text' => 'Original note', 'view_state' => 50, 'readers' => $file[3]);
+        }
     }
 }
 
@@ -108,9 +128,16 @@ function mci_has_readonly_access() {
     return true;
 }
 function config_get_global($name, $default = null) {
+    if ($name === 'core_path') { return getenv('MANTISBT_SOURCE') . '/core/'; }
     return $name === 'path' ? 'https://central.tauria.ee/mantis/' : $default;
 }
 function config_get($name, $default = null, $user = null, $project = null) {
+    $state = &$GLOBALS['test_mantis'];
+    $project = $project === null ? (isset($GLOBALS['g_project_override']) ? $GLOBALS['g_project_override'] : 1) : $project;
+    if (isset($state['project_configs'][$project]) && array_key_exists($name, $state['project_configs'][$project])) {
+        return $state['project_configs'][$project][$name];
+    }
+    if (array_key_exists($name, $state['config'])) { return $state['config'][$name]; }
     $values = array('view_attachments_threshold' => 10,
         'download_attachments_threshold' => $GLOBALS['test_mantis']['download_threshold'],
         'allow_view_own_attachments' => false,
@@ -124,6 +151,8 @@ function config_get($name, $default = null, $user = null, $project = null) {
         'disallowed_files' => $GLOBALS['test_mantis']['disallowed_files'],
         'file_upload_method' => $GLOBALS['test_mantis']['file_method'],
         'attachments_file_permissions' => 0400);
+    $values['delete_attachments_threshold'] = $state['delete_threshold'];
+    $values['allow_delete_own_attachments'] = $state['delete_own'];
     return isset($values[$name]) ? $values[$name] : $default;
 }
 function bug_get_attachments($issueId) {
@@ -140,6 +169,9 @@ function bug_get_field($issueId, $field) {
     return $field === 'project_id' ? 1 : null;
 }
 function bugnote_get_field($noteId, $field) {
+    if (isset($GLOBALS['test_mantis']['notes'][$noteId])) {
+        return $GLOBALS['test_mantis']['notes'][$noteId][$field];
+    }
     foreach ($GLOBALS['test_mantis']['attachments'] as $file) {
         if ($file['bugnote_id'] === $noteId) {
             return $field === 'bug_id' ? $file['issue_id'] : null;
@@ -158,6 +190,10 @@ function access_has_bugnote_level($threshold, $noteId, $userId = null) {
             return access_has_bug_level($threshold, $file['issue_id'], $userId)
                 && in_array($userId, $file['note_readers'], true);
         }
+    }
+    if (isset($GLOBALS['test_mantis']['notes'][$noteId])) {
+        $note = $GLOBALS['test_mantis']['notes'][$noteId];
+        return access_has_bug_level($threshold, $note['bug_id'], $userId) && in_array($userId, $note['readers'], true);
     }
     return false;
 }

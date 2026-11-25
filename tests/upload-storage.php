@@ -34,7 +34,9 @@ function api_token_parse_credentials($credentials) {
 }
 function helper_parse_issue_id($id) { return (int) $id; }
 function helper_get_current_project() { return 1; }
-function bug_get($id, $details = true) { return (object) array('id' => $id, 'project_id' => 1); }
+function bug_get($id, $details = true) {
+    return (object) array('id' => $id, 'project_id' => 1, 'status' => 60, 'handler_id' => 1, 'reporter_id' => 1);
+}
 function bug_is_readonly($id) { return $GLOBALS['test_mantis']['readonly']; }
 function bug_is_user_reporter($id, $user) { return $id === 93 + $user; }
 function access_has_project_level($threshold, $project, $user = null) { return $threshold <= 55; }
@@ -80,13 +82,22 @@ function db_query($query, $parameters = array()) {
         $row['id'] = $id;
         $row['issue_id'] = $row['bug_id'];
         $row['bytes'] = $row['content'];
-        $row['note_readers'] = array(auth_get_current_user_id());
+        $row['note_readers'] = isset($state['notes'][$row['bugnote_id']])
+            ? $state['notes'][$row['bugnote_id']]['readers'] : array(auth_get_current_user_id());
         if ($state['storage_failure'] === 'corrupt') { $row['content'] = $row['bytes'] = str_repeat('x', $row['filesize']); }
         $state['attachments'][$id] = $row;
         return array();
     }
     if (stripos($query, 'SELECT * FROM {bug_file}') !== false) {
         return array($state['attachments'][$parameters[0]]);
+    }
+    if (preg_match('/SELECT (\w+) FROM test_bug_file WHERE id=/', $query, $matches)) {
+        return isset($state['attachments'][$parameters[0]])
+            ? array(array($matches[1] => $state['attachments'][$parameters[0]][$matches[1]])) : array(array(false));
+    }
+    if (stripos($query, 'DELETE FROM test_bug_file') !== false) {
+        unset($state['attachments'][$parameters[0]]);
+        return array();
     }
     throw new RuntimeException('Unexpected fixture database query');
 }

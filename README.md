@@ -141,7 +141,8 @@ not be able to read. Unset `MANTIS_API_TOKEN` after testing.
 
 ## Development and checks
 
-Composer is used only to obtain Slim 3 for the development harness. Production
+Composer is used only to obtain Slim 3 for the development harness. Tests also
+need the PHP fileinfo and tokenizer extensions. Production
 uses the Slim version already bundled with MantisBT.
 
 ```bash
