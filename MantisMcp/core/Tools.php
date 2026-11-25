@@ -41,6 +41,11 @@ final class Tools {
                 ), array()),
             self::tool('mantis_get_issue', 'Read an accessible issue, including permitted notes.',
                 array('issue_id' => $id, 'select' => $select), array('issue_id')),
+            self::tool('mantis_get_workflow',
+                'Inspect the effective workflow graph and current-user status thresholds for an accessible issue. '
+                . 'Read this before changing status; discover intermediate states instead of guessing transitions. '
+                . 'Native required-field and read-only/reopen rules still apply.',
+                array('issue_id' => $id), array('issue_id')),
             self::tool('mantis_get_relationship_types',
                 'Discover native relationship type ids, API names, labels and reverse-direction type ids, including custom types.',
                 array(), array()),
@@ -84,7 +89,8 @@ final class Tools {
                 'Create an issue as the current account. Discover project/category and enum ids first.',
                 $create, array('project_id', 'category_id', 'summary', 'description'), true, false);
             $this->definitions[] = self::tool('mantis_update_issue',
-                'Change an accessible issue using the current account and normal MantisBT workflow rules.',
+                'Change an accessible issue using the current account and normal MantisBT workflow rules. '
+                . 'Before status changes, inspect mantis_get_workflow and follow configured transitions.',
                 array('issue_id' => $id,
                     'changes' => self::objectSchema($fields, array(), 1)),
                 array('issue_id', 'changes'), true, true);

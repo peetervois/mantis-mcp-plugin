@@ -72,7 +72,7 @@ An OpenAI API key is not involved.
 
 ## Tools
 
-The default configuration exposes nine read tools:
+The default configuration exposes ten read tools:
 
 | Tool | Purpose |
 |---|---|
@@ -82,6 +82,7 @@ The default configuration exposes nine read tools:
 | `mantis_get_issue_options` | Discover project-specific enum ids. |
 | `mantis_list_issues` | List/filter accessible issues, up to 100 per page. |
 | `mantis_get_issue` | Read an accessible issue and its permitted notes. |
+| `mantis_get_workflow` | Inspect effective workflow edges and native status thresholds. |
 | `mantis_get_relationship_types` | Discover native/custom relationship types and their reverse types. |
 | `mantis_get_relationships` | Read links whose other issue is accessible to the caller. |
 | `mantis_download_attachment` | Download bounded binary chunks after issue and note permission checks. |
@@ -114,7 +115,9 @@ assembly helper, size limits and verification steps.
 See [attachment uploads](docs/UPLOADS.md) for the bounded file input contract,
 preparation helper, size limits and handling of uncertain write results.
 
-See [relationships](docs/RELATIONSHIPS.md) for native type discovery, permissions and live acceptance.
+See [relationships](docs/RELATIONSHIPS.md) and [workflow inspection](docs/WORKFLOW.md)
+for discovery, permissions and live acceptance. Inspect workflow before status
+changes instead of guessing intermediate states.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.

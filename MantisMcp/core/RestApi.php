@@ -77,9 +77,12 @@ final class RestApi {
                     array('id' => $issueId, 'file_id' => $attachmentId));
                 return AttachmentDownload::chunk($issueId, $attachmentId, $info, $data,
                     $offset, $length, $expected, $this->maxDownloadBytes);
+            case 'mantis_get_workflow':
             case 'mantis_get_relationships':
                 $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
-                return Relationships::listForIssue($arguments['issue_id']);
+                return $name === 'mantis_get_workflow'
+                    ? Workflow::inspect($arguments['issue_id'])
+                    : Relationships::listForIssue($arguments['issue_id']);
             case 'mantis_get_relationship_types':
                 return Relationships::types();
             case 'mantis_set_relationship':
