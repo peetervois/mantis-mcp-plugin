@@ -55,7 +55,9 @@ function db_get_table($name) { return 'test_' . $name; }
 function db_prepare_binary_string($bytes) { return $bytes; }
 function db_is_oracle() { return false; }
 function db_now() { return time(); }
-function db_insert_id($table) { return $GLOBALS['test_mantis']['last_file_id']; }
+function db_insert_id($table) {
+    return $GLOBALS['test_mantis'][$table === 'test_bug_relationship' ? 'last_relationship_id' : 'last_file_id'];
+}
 function db_result($result) { return reset($result[0]); }
 function db_fetch_array(&$result) { return array_shift($result) ?: false; }
 function history_log_event_special($id, $type, $name, $note) {}
@@ -66,6 +68,9 @@ function bug_update_date($id) {
 }
 function db_query($query, $parameters = array()) {
     $state = &$GLOBALS['test_mantis'];
+    if (strpos($query, '{bug_relationship}') !== false) {
+        return management_relationship_query($query, $parameters);
+    }
     if (stripos($query, 'SELECT COUNT(*) FROM') !== false) {
         $count = count(array_filter($state['attachments'], function($row) use ($parameters) {
             return $row['filename'] === $parameters[0] && $row['issue_id'] === $parameters[1];

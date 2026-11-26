@@ -53,6 +53,8 @@ require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
 
 function reset_state() {
     unset($GLOBALS['g_project_override']);
+    $GLOBALS['g_cache_relationships_src'] = array();
+    $GLOBALS['g_cache_relationships_dest'] = array();
     if (isset($GLOBALS['test_mantis']['storage_dir'])) {
         foreach (glob($GLOBALS['test_mantis']['storage_dir'] . '/*') as $file) {
             unlink($file);

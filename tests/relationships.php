@@ -9,6 +9,40 @@ test_case('discovers native type zero and complementary relationship direction',
     same(3, $map[2]->complementary_type_id);
 });
 
+test_case('verifies create, replace and delete using native cached relationship readers', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    foreach (array(94, 96) as $id) {
+        same(array(), management_call('mantis_get_relationships', array('issue_id' => $id))->result->structuredContent->relationships);
+    }
+    $created = management_call('mantis_set_relationship', array('issue_id' => 94, 'target_issue_id' => 96, 'type_id' => 2))->result;
+    same(false, $created->isError);
+    $id = $created->structuredContent->relationship->id;
+    same(3, management_call('mantis_get_relationships', array('issue_id' => 96))->result->structuredContent->relationships[0]->type->id);
+    $changed = management_call('mantis_set_relationship', array('issue_id' => 94, 'target_issue_id' => 96, 'type_id' => 0))->result;
+    same(false, $changed->isError);
+    same($id, $changed->structuredContent->relationship->id);
+    same(1, count($GLOBALS['test_mantis']['relationships']));
+    same(4, management_call('mantis_get_relationships', array('issue_id' => 96))->result->structuredContent->relationships[0]->type->id);
+    $deleted = management_call('mantis_delete_relationship', array('issue_id' => 94, 'relationship_id' => $id))->result;
+    same(false, $deleted->isError);
+    same(true, $deleted->structuredContent->deleted);
+    foreach (array(94, 96) as $issue) {
+        same(array(), management_call('mantis_get_relationships', array('issue_id' => $issue))->result->structuredContent->relationships);
+    }
+});
+
+test_case('verifies deletion through the destination with both endpoint caches already populated', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $id = relationship_upsert(94, 96, 2);
+    foreach (array(94, 96) as $issue) {
+        same(1, count(management_call('mantis_get_relationships', array('issue_id' => $issue))->result->structuredContent->relationships));
+    }
+    $deleted = management_call('mantis_delete_relationship', array('issue_id' => 96, 'relationship_id' => $id))->result;
+    same(false, $deleted->isError);
+    same(array(), management_call('mantis_get_relationships', array('issue_id' => 94))->result->structuredContent->relationships);
+    same(array(), management_call('mantis_get_relationships', array('issue_id' => 96))->result->structuredContent->relationships);
+});
+
 test_case('does not disclose hidden peers or mutate links without both endpoint permissions', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     relationship_upsert(96, 95, 1);

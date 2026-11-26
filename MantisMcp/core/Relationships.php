@@ -54,6 +54,7 @@ final class Relationships {
         $command = new \IssueRelationshipAddCommand(array('query' => array('issue_id' => $issueId),
             'payload' => array('issue' => array('id' => $targetId), 'type' => array('id' => $typeId))));
         $result = $command->execute();
+        self::clearCache($issueId, $targetId);
         foreach (self::listForIssue($issueId)->relationships as $row) {
             if ($row['id'] === (int) $result['id'] && $row['target_issue_id'] === $targetId
                 && $row['type']['id'] === $typeId) {
@@ -70,16 +71,25 @@ final class Relationships {
     }
 
     private static function removeRelationship($issueId, $relationshipId) {
+        $targetId = self::target($issueId, $relationshipId);
         require_api('commands/IssueRelationshipDeleteCommand.php');
         $command = new \IssueRelationshipDeleteCommand(array('query' => array(
             'issue_id' => $issueId, 'relationship_id' => $relationshipId)));
         $command->execute();
+        self::clearCache($issueId, $targetId);
         foreach (self::listForIssue($issueId)->relationships as $row) {
             if ($row['id'] === $relationshipId) {
                 throw new ToolFailure('Relationship deletion could not be verified. Read the issue before retrying.');
             }
         }
         return (object) array('issue_id' => $issueId, 'relationship_id' => $relationshipId, 'deleted' => true);
+    }
+
+    private static function clearCache($issueId, $targetId) {
+        // Native relationship mutations do not invalidate the 2.29 request caches.
+        foreach (array($issueId, $targetId) as $id) {
+            unset($GLOBALS['g_cache_relationships_src'][$id], $GLOBALS['g_cache_relationships_dest'][$id]);
+        }
     }
 
 }
