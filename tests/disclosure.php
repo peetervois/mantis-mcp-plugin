@@ -19,9 +19,13 @@ function assert_empty_denial($response, $status) {
     same($expected, $headers, 'Unexpected denial headers');
 }
 
-test_case('discovery, tool calls and request validation share an empty response without an accepted key', function() {
-    $initialize = rpc('initialize', (object) array('protocolVersion' => '2025-06-18',
+function disclosure_initialize_request() {
+    return rpc('initialize', (object) array('protocolVersion' => '2025-06-18',
         'capabilities' => new stdClass(), 'clientInfo' => (object) array('name' => 'fixture', 'version' => '1')));
+}
+
+test_case('discovery, tool calls and request validation share an empty response without an accepted key', function() {
+    $initialize = disclosure_initialize_request();
     $messages = array($initialize, rpc('tools/list'), rpc('resources/list'), rpc('prompts/list'), rpc('ping'),
         tool_call('mantis_get_current_user'),
         tool_call('mantis_create_issue', (object) array('project_id' => 1, 'category_id' => 5,
@@ -52,12 +56,73 @@ test_case('discovery, tool calls and request validation share an empty response 
 
 test_case('working browser and guest sessions authorize ordinary REST only', function() {
     $GLOBALS['test_mantis']['anonymous'] = true;
-    foreach (array(0 => 'guest', 1 => 'alice') as $session => $name) {
+    foreach (array(0 => 'guest', 1 => 'alice', 4 => 'guest') as $session => $name) {
         $normal = send_request('', null, array('method' => 'GET', 'path' => '/unrelated', 'cookie_user' => $session));
         same(200, $normal->getStatusCode());
         same($name, $normal->getHeaderLine(HEADER_USERNAME));
+        same($session === 0 ? LOGIN_METHOD_ANONYMOUS : LOGIN_METHOD_COOKIE, $normal->getHeaderLine(HEADER_LOGIN_METHOD));
         assert_empty_denial(send_request(rpc('tools/list'), null, array('cookie_user' => $session)), 401);
     }
+});
+
+test_case('guest web access cannot replace a missing or invalid MCP token', function() {
+    $initialize = disclosure_initialize_request();
+    $discovery = rpc('tools/list');
+    $identity = tool_call('mantis_get_current_user');
+    foreach (array(false, true) as $allowAnonymous) {
+        $GLOBALS['test_mantis']['anonymous'] = $allowAnonymous;
+        foreach (array(array(), array('cookie_user' => 4)) as $browser) {
+            foreach (array(null, 'unknown-fixture-key') as $token) {
+                assert_empty_denial(send_request($initialize, $token, $browser), 401);
+                assert_empty_denial(send_request($discovery, $token, $browser), 401);
+                assert_empty_denial(send_request($identity, $token, $browser), 401);
+            }
+        }
+    }
+    same(array(), $GLOBALS['test_mantis']['calls'], 'Denied requests must not dispatch a REST tool');
+});
+
+test_case('guest and personal tokens select their owners independently of the browser account', function() {
+    $state = &$GLOBALS['test_mantis'];
+    $state['anonymous'] = true;
+    $state['tokens']['fixture-guest-key'] = 4;
+    $identity = tool_call('mantis_get_current_user');
+    $cases = array(
+        array('fixture-guest-key', array(), 4, 'guest'),
+        array('alice-key', array('cookie_user' => 4), 1, 'alice'),
+        array('fixture-guest-key', array('cookie_user' => 1), 4, 'guest'),
+    );
+    foreach ($cases as list($token, $browser, $id, $name)) {
+        $response = send_request($identity, $token, $browser);
+        same(200, $response->getStatusCode());
+        $result = decoded($response)->result;
+        same(false, $result->isError);
+        same($id, $result->structuredContent->id);
+        same($name, $result->structuredContent->name);
+    }
+    same(array(4, 1, 4), array_column($state['calls'], 'user'));
+});
+
+test_case('guest sessions honor REST access changes and token revocation on the next request', function() {
+    $state = &$GLOBALS['test_mantis'];
+    $state['anonymous'] = true;
+    $token = 'fixture-guest-key';
+    $state['tokens'][$token] = 4;
+    $browser = array('cookie_user' => 4);
+    $identity = tool_call('mantis_get_current_user');
+    $discovery = rpc('tools/list');
+
+    same(4, decoded(send_request($identity, $token, $browser))->result->structuredContent->id);
+    $state['api_access'] = false;
+    assert_empty_denial(send_request($discovery, $token, $browser), 401);
+    assert_empty_denial(send_request($identity, $token, $browser), 401);
+
+    $state['api_access'] = true;
+    same(4, decoded(send_request($identity, $token, $browser))->result->structuredContent->id);
+    unset($state['tokens'][$token]);
+    assert_empty_denial(send_request($discovery, $token, $browser), 401);
+    assert_empty_denial(send_request($identity, $token, $browser), 401);
+    same(array(4, 4), array_column($state['calls'], 'user'));
 });
 
 test_case('unusable accounts and identity mismatches do not disclose account or API access state', function() {
