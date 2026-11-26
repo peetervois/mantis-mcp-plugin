@@ -16,7 +16,7 @@ class ToolFailure extends \RuntimeException {
  * Stateless MCP/JSON-RPC dispatcher. A new instance is created per HTTP request.
  */
 final class Protocol {
-    const VERSION = '0.6.0';
+    const VERSION = '0.7.0';
     const PROTOCOL_VERSION = '2025-06-18';
     const SUPPORTED_VERSIONS = array('2025-06-18', '2025-03-26', '2025-11-25');
 

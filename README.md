@@ -198,7 +198,7 @@ verify client payload preparation and a byte-for-byte upload/download contract.
 They do **not** replace an installation test against a real MantisBT database.
 Production deployment and end-to-end acceptance remain separate from the harness.
 
-The package is written to `dist/MantisMcp-0.6.0.zip`. GitHub Actions uploads the
+The package is written to `dist/MantisMcp-0.7.0.zip`. GitHub Actions uploads the
 matching `dist/install/` tree, so its downloaded artifact is directly installable
 and contains the `MantisMcp/` folder rather than another ZIP. Revision-based file
 timestamps replace the previous fixed timestamps; restart the PHP handler after

@@ -12,7 +12,7 @@ For an installation at `/var/www/html/mantis`, the entry point must be:
 /var/www/html/mantis/plugins/MantisMcp/MantisMcp.php
 ```
 
-Alternatively, extract `MantisMcp-0.6.0.zip` into `plugins/`. Build the package on
+Alternatively, extract `MantisMcp-0.7.0.zip` into `plugins/`. Build the package on
 a development machine using `python3 scripts/package.py`, or download it from
 the GitHub Actions artifacts for the branch being tested.
 
@@ -119,3 +119,19 @@ and eleven optional writes. See [chunked uploads](CHUNK-UPLOADS.md) for staging,
 permissions, native size checks and restart/multi-worker requirements. Download
 limits remain separate. Verify exact bytes on a disposable permitted file before
 using the new upload path for real work.
+
+## Updating to 0.7.0
+
+Upload sessions default to a configurable one-day idle timeout. Set
+`$g_plugin_MantisMcp_upload_idle_seconds` to a positive number of seconds when
+needed. Authenticated MCP interactions reclaim expired staging without cron.
+See [session lifecycle](SESSION-LIFECYCLE.md) for deadlines, cleanup and parallel
+operations. Existing absolute deadlines remain in effect until a successful
+write advances the session.
+
+Downloads have no default MCP total-file cap. Remove an old explicit
+`max_download_bytes` override, or set it to `false`, to use that default; a
+positive override remains enforced. Chunk size and permissions are unchanged.
+The client assembly helper supports streaming JSON Lines with no total cap.
+Deploy the replacement directory and restart the PHP handler as above; no new
+tool names or token are needed. Verify a large exact download after deployment.
