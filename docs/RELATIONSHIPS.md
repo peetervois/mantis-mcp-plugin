@@ -25,7 +25,7 @@ IssueRelationshipDeleteCommand in process and verify their effects. All calls
 use the existing personal token; there are no arbitrary REST/SQL/config inputs.
 Native history and notification behavior remain in use.
 
-The adapter clears both endpoint relationship caches after native mutations
+Since version 0.4.1, the adapter clears both endpoint relationship caches after native mutations
 before verifying their effects. This is needed on MantisBT 2.29, where a
 preflight read can otherwise leave a successfully deleted link in the current
 request's cached list and cause a false failure response.

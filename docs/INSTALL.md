@@ -12,7 +12,7 @@ For an installation at `/var/www/html/mantis`, the entry point must be:
 /var/www/html/mantis/plugins/MantisMcp/MantisMcp.php
 ```
 
-Alternatively, extract `MantisMcp-0.4.0.zip` into `plugins/`. Build the package on
+Alternatively, extract `MantisMcp-0.4.1.zip` into `plugins/`. Build the package on
 a development machine using `python3 scripts/package.py`, or download it from
 the GitHub Actions artifacts for the branch being tested.
 
@@ -88,3 +88,11 @@ this implementation. They do not need to be running to use this PHP plugin.
 
 The existing `Alias /mantis /var/www/html/mantis` and its `Directory` configuration
 serve the plugin's REST endpoint as well.
+
+## Updating from 0.4.0
+
+Version 0.4.1 fixes false failure responses after existing-note uploads and
+relationship deletion. On 0.4.0, these writes can already have completed despite
+the error. Read the issue and current relationships before retrying. Replace the
+plugin with 0.4.1 and restart the PHP handler; no new token or schema change is
+required for this patch.
