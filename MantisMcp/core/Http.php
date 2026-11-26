@@ -14,14 +14,16 @@ final class Http {
     private $origin;
     private $enableWrites;
     private $maxBytes;
+    private $uploadIdleSeconds;
 
     public function __construct(callable $lookupToken, callable $currentUser, $mantisUrl,
-        $enableWrites = false, $maxBytes = 1048576) {
+        $enableWrites = false, $maxBytes = 1048576, $uploadIdleSeconds = UploadSessions::IDLE_SECONDS) {
         $this->lookupToken = $lookupToken;
         $this->currentUser = $currentUser;
         $this->origin = self::origin($mantisUrl);
         $this->enableWrites = (bool) $enableWrites;
         $this->maxBytes = self::requestLimit($maxBytes);
+        $this->uploadIdleSeconds = $uploadIdleSeconds;
     }
 
     public static function requestLimit($configured) {
@@ -111,7 +113,7 @@ final class Http {
 
         // Ordinary authenticated traffic also reclaims abandoned staging.
         try {
-            $cleanup = UploadSessions::collectExpired();
+            $cleanup = UploadSessions::collectExpired($this->uploadIdleSeconds);
             if ($cleanup['failed'] > 0) { error_log('MantisMcp: some expired upload files could not be removed.'); }
         } catch (\Throwable $error) { error_log('MantisMcp: expired upload cleanup failed.'); }
         $protocol = new Protocol(new Tools($this->enableWrites), $execute);

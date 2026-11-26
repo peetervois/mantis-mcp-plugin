@@ -16,12 +16,22 @@ final class UploadSessions {
         return min(self::CHUNK_BYTES, max(0, intdiv(max(0, $budget - 512), 8) * 3));
     }
 
-    public static function execute($name, array $args, $uploadLimit, $requestLimit, callable $readIssue) {
+    public static function idleLimit($configured) {
+        $seconds = filter_var($configured, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        if ($seconds === false || $seconds > PHP_INT_MAX - time()) {
+            throw new ToolFailure('Upload idle timeout must be a positive integer number of seconds.');
+        }
+        return $seconds;
+    }
+
+    public static function execute($name, array $args, $uploadLimit, $requestLimit, callable $readIssue,
+        $idleSeconds = self::IDLE_SECONDS) {
+        $idleSeconds = self::idleLimit($idleSeconds);
         if ($name === 'mantis_begin_attachment_upload') {
             call_user_func($readIssue, $args['issue_id']);
-            return ProjectContext::run($args['issue_id'], function() use ($args, $uploadLimit, $requestLimit) {
+            return ProjectContext::run($args['issue_id'], function() use ($args, $uploadLimit, $requestLimit, $idleSeconds) {
                 AttachmentUpload::authorize($args['issue_id'], $args, $uploadLimit, $args['size']);
-                return self::begin($args, $requestLimit);
+                return self::begin($args, $requestLimit, $idleSeconds);
             });
         }
         $id = $args['upload_id'];
@@ -35,6 +45,7 @@ final class UploadSessions {
         try {
             if (!flock($lock, LOCK_EX | LOCK_NB)) { throw new ToolFailure('Upload session is busy; inspect its status before retrying.'); }
             $state = self::load($base);
+            $state['idle_seconds'] = $idleSeconds;
             if ($state['owner_id'] !== (int) auth_get_current_user_id()) { throw new ToolFailure('Upload session is unavailable.'); }
             if ($state['expires_at'] <= time()) {
                 self::discard($base);
@@ -50,7 +61,7 @@ final class UploadSessions {
                             || !empty($state['native_write_unconfirmed']);
                         $state['state'] = 'cancelled';
                         unset($state['new_note']);
-                        $state['expires_at'] = time() + self::IDLE_SECONDS;
+                        $state['expires_at'] = time() + $state['idle_seconds'];
                         self::save($base, $state);
                     }
                     return self::status($state, $base, $requestLimit);
@@ -89,9 +100,9 @@ final class UploadSessions {
         return $root;
     }
 
-    private static function begin(array $args, $requestLimit) {
+    private static function begin(array $args, $requestLimit, $idleSeconds) {
         $root = self::root(true);
-        self::collectExpired();
+        self::collectExpired($idleSeconds);
         if (self::chunkLimit($requestLimit) < 1) { throw new ToolFailure('Request limit is too small for an upload chunk.'); }
         $id = bin2hex(random_bytes(32));
         $base = $root . '/' . $id;
@@ -107,7 +118,8 @@ final class UploadSessions {
             $state['owner_id'] = (int) auth_get_current_user_id();
             $state['received'] = 0;
             $state['state'] = 'uploading';
-            $state['expires_at'] = time() + self::IDLE_SECONDS;
+            $state['idle_seconds'] = $idleSeconds;
+            $state['expires_at'] = time() + $idleSeconds;
             self::save($base, $state);
             return self::status($state, $base, $requestLimit);
         } catch (\Throwable $e) {
@@ -168,6 +180,7 @@ final class UploadSessions {
             'filename' => $state['filename'], 'mime_type' => $state['mime_type'], 'size' => $state['size'],
             'sha256' => $state['sha256'], 'received_bytes' => $received, 'next_offset' => $received,
             'state' => $state['state'], 'expires_at' => $state['expires_at'],
+            'idle_timeout_seconds' => $state['idle_seconds'],
             'native_write_unconfirmed' => in_array($state['state'], array('finalizing', 'unconfirmed'), true)
                 || !empty($state['native_write_unconfirmed']),
             'max_chunk_bytes' => self::chunkLimit($requestLimit));
@@ -207,7 +220,7 @@ final class UploadSessions {
                 $state['received'] += $length;
             }
         } finally { fclose($file); }
-        $state['expires_at'] = time() + self::IDLE_SECONDS;
+        $state['expires_at'] = time() + $state['idle_seconds'];
         self::save($base, $state);
         return self::status($state, $base, $requestLimit);
     }
@@ -230,7 +243,7 @@ final class UploadSessions {
             $state['state'] = 'complete';
             $state['receipt'] = (array) $receipt;
             unset($state['new_note']);
-            $state['expires_at'] = time() + self::IDLE_SECONDS;
+            $state['expires_at'] = time() + $state['idle_seconds'];
             self::save($base, $state);
             try { self::removeData($base); }
             catch (\Throwable $cleanup) { error_log('MantisMcp: completed upload staging cleanup failed.'); }
@@ -248,7 +261,8 @@ final class UploadSessions {
     }
 
     /** Internal maintenance entry point; no MCP tool accepts cleanup paths. */
-    public static function collectExpired() {
+    public static function collectExpired($idleSeconds = self::IDLE_SECONDS) {
+        $idleSeconds = self::idleLimit($idleSeconds);
         $result = array('expired_sessions' => 0, 'orphan_files' => 0, 'busy_sessions' => 0, 'failed' => 0);
         if (!file_exists(self::directory()) && !is_link(self::directory())) { return $result; }
         $root = self::root(false);
@@ -259,7 +273,7 @@ final class UploadSessions {
         try {
             if (!chmod($path, 0600)) { throw new ToolFailure('Could not secure upload maintenance.'); }
             if (!flock($gate, LOCK_EX | LOCK_NB)) { return $result; }
-            return self::collect($root, $result);
+            return self::collect($root, $result, $idleSeconds);
         } finally { flock($gate, LOCK_UN); fclose($gate); }
     }
 
@@ -273,27 +287,29 @@ final class UploadSessions {
         }
     }
 
-    private static function collect($root, array $result) {
+    private static function collect($root, array $result, $idleSeconds) {
         $scanned = 0;
         foreach (new \DirectoryIterator($root) as $file) {
-            if ($file->isLink() || !$file->isFile() || $file->getMTime() + self::IDLE_SECONDS >= time()) { continue; }
+            if ($file->isLink() || !$file->isFile()) { continue; }
+            $old = $file->getMTime() + $idleSeconds <= time();
             $name = $file->getFilename();
             if (strpos($name, '.state-') === 0
                 || (preg_match('/\A([a-f0-9]{64})\.(data|json)\z/', $name, $orphan)
                     && !file_exists($root . '/' . $orphan[1] . '.lock') && !is_link($root . '/' . $orphan[1] . '.lock'))) {
+                if (!$old) { continue; }
                 if (++$scanned > 100) { break; }
                 if (@unlink($file->getPathname())) { ++$result['orphan_files']; } else { ++$result['failed']; }
                 continue;
             }
             if (!preg_match('/\A([a-f0-9]{64})\.lock\z/', $name, $match)) { continue; }
-            if (++$scanned > 100) { break; }
             $base = $root . '/' . $match[1];
             $lock = @fopen($base . '.lock', 'r+b');
             if ($lock === false) { continue; }
             try {
                 if (!flock($lock, LOCK_EX | LOCK_NB)) { ++$result['busy_sessions']; continue; }
                 try { $state = self::load($base); if ($state['expires_at'] > time()) { continue; } }
-                catch (\Throwable $ignored) { /* old incomplete metadata is disposable */ }
+                catch (\Throwable $ignored) { if (!$old) { continue; } }
+                if (++$scanned > 100) { break; }
                 try { self::discard($base); ++$result['expired_sessions']; }
                 catch (\Throwable $ignored) { ++$result['failed']; }
             } finally { flock($lock, LOCK_UN); fclose($lock); }

@@ -310,3 +310,20 @@ test_case('maintenance skips locked sessions and active uploads while reclaiming
     check(is_file(session_root() . '/' . $active . '.data'));
     same(false, session_chunk($active, 0, 'still active')->result->isError);
 });
+
+test_case('a configured one-second timeout expires in real time and is collected by ordinary traffic', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $GLOBALS['test_mantis']['upload_idle_seconds'] = 1;
+    $begin = session_begin('short-lived staging')->result;
+    same(false, $begin->isError);
+    same(1, $begin->structuredContent->idle_timeout_seconds);
+    $base = session_root() . '/' . $begin->structuredContent->upload_id;
+    check(is_file($base . '.data'));
+    usleep(1100000); // Exercise the actual deadline, not an edited timestamp.
+    // Increasing the default must not resurrect an already expired session.
+    $GLOBALS['test_mantis']['upload_idle_seconds'] = UploadSessions::IDLE_SECONDS;
+    same(false, management_call('mantis_get_current_user')->result->isError);
+    foreach (array('.lock', '.json', '.data') as $suffix) { check(!file_exists($base . $suffix)); }
+    same(true, session_call('finish', $begin->structuredContent->upload_id)->result->isError);
+    same(300, $GLOBALS['test_mantis']['last_file_id']);
+});

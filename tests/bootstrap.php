@@ -204,6 +204,9 @@ function access_has_bugnote_level($threshold, $noteId, $userId = null) {
     return false;
 }
 function plugin_config_get($name, $default = null, $global = false) {
+    if ($name === 'upload_idle_seconds') {
+        return isset($GLOBALS['test_mantis']['upload_idle_seconds']) ? $GLOBALS['test_mantis']['upload_idle_seconds'] : $default;
+    }
     if ($name === 'enable_write_tools') {
         return $GLOBALS['test_mantis']['writes'];
     }

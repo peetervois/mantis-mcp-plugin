@@ -91,9 +91,10 @@ are checked against the original whole-file SHA-256 before native storage.
 Metadata includes note text until finalization/cancellation, so protect the
 temporary filesystem like the other application data.
 
-Sessions expire one day after creation or the last successful chunk append.
+Sessions expire after the configured idle timeout (one day by default) following
+creation or the last successful chunk append.
 Polling alone does not extend them. Completed receipts and cancelled tombstones
-are retained for one day for safe retries. A new begin opportunistically
+use the same configured timeout for safe retries. A new begin opportunistically
 collects up to 100 old staging candidates. An expired session cannot resume.
 Authenticated MCP interactions also check for expired staging, including reads.
 Cleanup is deliberately lazy: without later traffic, expired staging can remain
