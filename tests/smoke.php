@@ -25,6 +25,14 @@ function smoke_options($prefix) {
     return $result;
 }
 
+function smoke_redact($line) {
+    foreach (array('MANTIS_API_TOKEN', 'MANTIS_API_TOKEN_SECOND') as $key) {
+        $token = getenv($key);
+        if ($token !== false && $token !== '') { $line = str_replace($token, '[redacted]', $line); }
+    }
+    return $line;
+}
+
 function smoke_transport($url, array $credentials) {
     $id = 0;
     $versions = array();
@@ -78,13 +86,13 @@ function smoke_main() {
     if ($options['secondary']) { $options['secondary_options'] = smoke_options('MANTIS_MCP_SECOND_'); }
     $request = smoke_transport($url, array('primary' => $primary, 'secondary' => $secondary,
         'missing' => null, 'invalid' => 'not-a-valid-mantis-api-token'));
-    (new Checks($request, function($line) { echo $line . "\n"; }))->run($options);
+    (new Checks($request, function($line) { echo smoke_redact($line) . "\n"; }))->run($options);
 }
 
 if (realpath(isset($_SERVER['SCRIPT_FILENAME']) ? $_SERVER['SCRIPT_FILENAME'] : '') === __FILE__) {
     try { smoke_main(); }
     catch (Throwable $error) {
-        fwrite(STDERR, 'FAIL ' . ($error instanceof RuntimeException ? $error->getMessage() : 'Unexpected local check failure.') . "\n");
+        fwrite(STDERR, smoke_redact('FAIL ' . ($error instanceof RuntimeException ? $error->getMessage() : 'Unexpected local check failure.')) . "\n");
         exit(1);
     }
 }

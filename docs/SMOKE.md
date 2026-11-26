@@ -81,6 +81,10 @@ transported through the real Slim/MCP authentication harness, including broken
 inventories, stale/malformed workflow data, wrong reverse links and failed
 permission checks. That is separate from an authenticated live CLI run. Tests
 can also validate selected live MCP read captures with the same pure assertions;
-captures do not verify the CLI's HTTP/authentication exchange. Report which
+captures do not verify the CLI's HTTP/authentication exchange. Separate Python
+tests run the actual PHP HTTP client against a disposable loopback server with
+fixture-only tokens, checking response correlation, protocol headers, redirect
+refusal, response bounds, credential redaction and separate account exchanges.
+That loopback simulation is still not a production CLI run. Report which
 route was actually used. No test writes, production credentials or private
 captures belong in the public source repository.
