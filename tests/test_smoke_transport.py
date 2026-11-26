@@ -37,7 +37,10 @@ class SmokeTransportTests(unittest.TestCase):
                 token = self.headers.get("Authorization", "")
                 fixture.requests.append((self.path, body["method"], token, self.headers.get("MCP-Protocol-Version")))
                 if token not in ("Bearer " + PRIMARY, "Bearer " + SECOND):
-                    self.respond(401, {"error": "unauthorized"})
+                    if fixture.mode == "denial-body":
+                        self.respond(401, b"private fixture diagnostic")
+                    else:
+                        self.respond(401, None)
                     return
                 if fixture.mode == "redirect":
                     self.send_response(307)
@@ -73,10 +76,20 @@ class SmokeTransportTests(unittest.TestCase):
                 self.respond(200, response)
 
             def respond(self, status, value):
-                raw = b"" if value is None else json.dumps(value).encode()
+                if isinstance(value, bytes):
+                    raw = value
+                else:
+                    raw = b"" if value is None else json.dumps(value).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(raw)))
+                if status == 401:
+                    challenge = 'Bearer realm="private fixture"' if fixture.mode == "denial-realm" else "Bearer"
+                    self.send_header("WWW-Authenticate", challenge)
+                    if fixture.mode != "denial-cache":
+                        self.send_header("Cache-Control", "private, no-store")
+                    if fixture.mode == "denial-header":
+                        self.send_header("X-Mantis-Username", "private fixture user")
                 self.end_headers()
                 try:
                     self.wfile.write(raw)
@@ -116,6 +129,15 @@ class SmokeTransportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.requests[-1][2], "Bearer " + PRIMARY)
         self.assertIn("separate account identities", result.stdout)
+
+    def test_anonymous_discovery_checks_raw_denials_without_printing_private_details(self):
+        for mode in ("denial-body", "denial-realm", "denial-header", "denial-cache"):
+            with self.subTest(mode=mode):
+                self.mode = mode
+                result = self.run_smoke()
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn("private fixture", result.stdout + result.stderr)
+                self.assertFalse(any(request[2] == "Bearer " + PRIMARY for request in self.requests))
 
     def test_reflected_credentials_are_redacted_from_version_output(self):
         self.mode = "reflection"

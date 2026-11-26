@@ -39,6 +39,10 @@ foreach (array('BUG_DUPLICATE' => 0, 'BUG_RELATED' => 1, 'BUG_DEPENDANT' => 2,
     if (!defined($name)) { define($name, $value); }
 }
 require $mantis . '/core/classes/MantisEnum.class.php';
+$tokenApi = $mantis . '/core/api_token_api.php';
+if (strpos(file_get_contents($tokenApi), 'function api_token_parse_credentials(') !== false) {
+    load_native_function($tokenApi, 'api_token_parse_credentials');
+}
 load_native_function($mantis . '/core/bug_api.php', 'bug_check_workflow');
 load_native_function($mantis . '/core/access_api.php', 'access_get_status_threshold');
 load_native_function($mantis . '/core/bugnote_api.php', 'bugnote_date_update');

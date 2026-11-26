@@ -17,6 +17,12 @@ with session status and the base writes. Their idempotency annotations are
 checked without creating or changing any session. With issue checks
 enabled, its absence is explicitly reported as skipped on older servers.
 
+For both `initialize` and `tools/list`, the helper checks the response to a
+missing key and a synthetic invalid key. It requires HTTP 401, zero body bytes,
+a bare Bearer challenge and a `no-store` cache directive. It checks for native
+Mantis headers, cookies, links and MCP metadata. Failures print the name of
+the check. This also detects error pages added by the web server or proxy.
+
 Supply an accessible issue to check its project/status context, full workflow
 graph, status metadata, next-state/access intersection and visible relationship
 types. Relationship type zero and custom types with null API names are valid.

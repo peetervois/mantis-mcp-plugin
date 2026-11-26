@@ -157,10 +157,12 @@ test_case('smoke rejects broken complementary definitions and wrong reverse dire
 });
 
 test_case('smoke does not confuse an internal tool failure or leaked issue data with permission denial', function() {
-    foreach (array('internal-error', 'data-leak') as $case) {
+    foreach (array('internal-error', 'issue-data', 'error-code', 'block-metadata') as $case) {
         smoke_fails(function() use ($case) { smoke_fixture(function($r, $role, $method, $params) use ($case) {
             if ($method === 'tools/call' && $params->name === 'mantis_get_issue' && $params->arguments->issue_id === 95) {
                 if ($case === 'internal-error') { $r[1]->result->content[0]->text = 'Internal failure'; }
+                elseif ($case === 'error-code') { $r[1]->result->structuredContent = (object) array('error_code' => 'private fixture'); }
+                elseif ($case === 'block-metadata') { $r[1]->result->content[0]->_meta = (object) array('detail' => 'private fixture'); }
                 else { $r[1]->result->structuredContent = (object) array('issues' => array((object) array('id' => 95))); }
             }
             return $r;

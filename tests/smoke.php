@@ -33,6 +33,24 @@ function smoke_redact($line) {
     return $line;
 }
 
+function smoke_check_denial(array $lines, $body) {
+    Checks::ensure($body === '', 'Empty denial body');
+    Checks::ensure(preg_match('~^HTTP/\S+ 401(?: Unauthorized)?$~iD', trim(array_shift($lines))), 'Generic denial status');
+    $headers = array();
+    foreach ($lines as $line) {
+        $pair = explode(':', $line, 2);
+        if (count($pair) !== 2) { continue; }
+        $name = strtolower(trim($pair[0]));
+        Checks::ensure(!preg_match('/^(?:x-mantis-|mantis-|mcp-)/', $name)
+            && !in_array($name, array('set-cookie', 'link', 'location', 'allow', 'deprecation'), true),
+            'Denial headers without application metadata');
+        $headers[$name][] = trim($pair[1]);
+    }
+    Checks::ensure(isset($headers['www-authenticate']) && $headers['www-authenticate'] === array('Bearer'), 'Bare Bearer challenge');
+    $cache = isset($headers['cache-control']) ? implode(',', $headers['cache-control']) : '';
+    Checks::ensure(in_array('no-store', array_map('trim', explode(',', strtolower($cache))), true), 'Non-cacheable denial');
+}
+
 function smoke_transport($url, array $credentials) {
     $id = 0;
     $versions = array();
@@ -54,6 +72,9 @@ function smoke_transport($url, array $credentials) {
         finally { fclose($stream); }
         Checks::ensure(is_string($body) && strlen($body) <= 2097152, 'Bounded response body');
         $status = (int) $match[1];
+        if ($role === 'missing' || $role === 'invalid') {
+            smoke_check_denial($http_response_header, $body);
+        }
         $data = json_decode($body);
         if ($status === 200) {
             Checks::ensure($data instanceof stdClass && isset($data->jsonrpc, $data->id)

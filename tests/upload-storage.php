@@ -29,9 +29,6 @@ function error_string($code, $parameters = array()) { return 'Fixture error ' . 
 function auth_ensure_user_authenticated() {
     if (!auth_get_current_user_id()) { throw new RuntimeException('Unauthenticated fixture'); }
 }
-function api_token_parse_credentials($credentials) {
-    return preg_replace('/^Bearer +/i', '', trim($credentials));
-}
 function helper_parse_issue_id($id) { return (int) $id; }
 function helper_get_current_project() { return 1; }
 function bug_get($id, $details = true) {

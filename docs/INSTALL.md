@@ -71,7 +71,8 @@ The caller's normal MantisBT permissions still apply.
 Opening the endpoint in a browser is not an MCP test. The endpoint uses
 authenticated HTTP POST requests:
 
-- No token: HTTP **401**.
+- A request without a token receives HTTP **401**, an empty body and a bare
+  `WWW-Authenticate: Bearer` challenge.
 - Valid token with GET: HTTP **405** and `Allow: POST`.
 - Valid token with MCP initialize POST: HTTP **200** with a JSON-RPC response.
 

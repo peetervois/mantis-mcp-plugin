@@ -8,6 +8,7 @@ namespace Tauria\MantisMcp;
 
 final class Http {
     const OWNER_ATTRIBUTE = 'mantis_mcp_token_owner';
+    private const ACCESS_ATTRIBUTE = 'mantis_mcp_access';
 
     private $lookupToken;
     private $currentUser;
@@ -44,39 +45,56 @@ final class Http {
             && (count($request->getHeader('Origin')) !== 1
                 || self::origin($origin, true) === null
                 || self::origin($origin, true) !== $this->origin)) {
-            return $this->failure($response, 403, 'Origin is not allowed.');
+            return self::emptyResponse(403);
         }
 
         // Bind the request to its token owner; do not accept Mantis impersonation.
         if ($request->getHeaderLine('X-Mantis-Username') !== ''
             || $request->getHeaderLine('Mantis-Username') !== '') {
-            return $this->failure($response, 403, 'MCP does not allow impersonation.');
+            return self::emptyResponse(403);
         }
 
         $token = self::token($request->getHeaderLine('Authorization'));
         if ($token === null || count($request->getHeader('Authorization')) !== 1) {
-            return $this->unauthorized($response);
+            return self::emptyResponse(401);
         }
+        // Slim appends printed PHP output to the response. Only the response stream belongs on the wire.
+        ob_start(static function($output) { return ''; }, 8192);
         try {
             $owner = call_user_func($this->lookupToken, $token);
             if ($owner === false || $owner === null || (int) $owner < 1) {
-                return $this->unauthorized($response);
+                return self::emptyResponse(401);
             }
-            // MantisBT 2.26.4 expects a bare token, not a Bearer prefix.
-            $request = $request->withHeader('Authorization', $token)
-                ->withAttribute(self::OWNER_ATTRIBUTE, (int) $owner);
-            return self::noStore($next($request, $response));
+            // Use the native Bearer parser when available. Older MantisBT expects a bare token.
+            $credentials = function_exists('api_token_parse_credentials') ? 'Bearer ' . $token : $token;
+            $access = (object) array('accepted' => false);
+            $request = $request->withHeader('Authorization', $credentials)
+                ->withAttribute(self::OWNER_ATTRIBUTE, (int) $owner)->withAttribute(self::ACCESS_ATTRIBUTE, $access);
+            $reply = $next($request, $response);
+            $status = $reply->getStatusCode();
+            if ($status >= 500 || $status === 429) { return self::emptyResponse($status); }
+            if (!$access->accepted || $status === 401 || $status === 403) {
+                // Native middleware can short-circuit before the endpoint verifies the identity.
+                return self::emptyResponse(401);
+            }
+            return self::noStore($reply->withoutHeader(HEADER_USERNAME)
+                ->withoutHeader(HEADER_LOGIN_METHOD)->withoutHeader(HEADER_VERSION));
         } catch (\Throwable $error) {
             error_log('MantisMcp: authentication pipeline failed (' . get_class($error) . ').');
-            return $this->failure($response, 500, 'MantisBT could not process this request.');
+            return self::emptyResponse(500);
+        } finally {
+            ob_end_clean();
         }
     }
 
     public function handle($request, $response, callable $execute) {
         $owner = $request->getAttribute(self::OWNER_ATTRIBUTE);
-        if (!$owner || (int) call_user_func($this->currentUser) !== (int) $owner) {
-            return $this->unauthorized($response);
+        $access = $request->getAttribute(self::ACCESS_ATTRIBUTE);
+        if (!$owner || !$access || $request->getAttribute(ATTRIBUTE_FORCE_API_ENABLED) !== false
+            || (int) call_user_func($this->currentUser) !== (int) $owner) {
+            return self::emptyResponse(401);
         }
+        $access->accepted = true;
         if ($request->getMethod() !== 'POST') {
             return $this->failure($response, 405, 'Use POST for stateless MCP.')
                 ->withHeader('Allow', 'POST');
@@ -137,9 +155,11 @@ final class Http {
         return preg_match('/\A[^\s,]+\z/', $authorization) ? $authorization : null;
     }
 
-    private function unauthorized($response) {
-        return $this->failure($response, 401, 'A valid personal MantisBT API token is required.')
-            ->withHeader('WWW-Authenticate', 'Bearer realm="MantisBT MCP"');
+    private static function emptyResponse($status) {
+        // A native response can already contain identity headers, a custom reason and a partial body.
+        $response = new \Slim\Http\Response($status);
+        if ($status === 401) { $response = $response->withHeader('WWW-Authenticate', 'Bearer'); }
+        return self::noStore($response);
     }
 
     private function failure($response, $status, $message) {

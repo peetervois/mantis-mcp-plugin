@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  * Copyright (c) 2026, Peeter Vois
  *
- * Integration harness: real Slim 3 and the selected MantisBT AuthMiddleware and
- * MantisPlugin base class, with a deliberately small in-memory Mantis datastore.
+ * Integration harness: real Slim 3, the selected MantisBT REST middleware
+ * and plugin base class, and an in-memory Mantis datastore.
  */
 
 error_reporting(E_ALL & ~E_DEPRECATED);
@@ -31,7 +31,11 @@ define('HTTP_STATUS_SUCCESS', 200);
 define('HTTP_STATUS_UNAUTHORIZED', 401);
 define('HTTP_STATUS_FORBIDDEN', 403);
 define('HTTP_STATUS_NOT_FOUND', 404);
+define('HTTP_STATUS_UNAVAILABLE', 503);
+define('ERROR_BUG_NOT_FOUND', 1100);
 define('HEADER_AUTHORIZATION', 'Authorization');
+define('HEADER_WWW_AUTHENTICATE', 'WWW-Authenticate');
+define('HEADER_VERSION', 'X-Mantis-Version');
 define('HEADER_USERNAME', 'X-Mantis-Username');
 define('HEADER_LOGIN_METHOD', 'X-Mantis-LoginMethod');
 define('LOGIN_METHOD_COOKIE', 'cookie');
@@ -46,6 +50,11 @@ function require_api($name) {
 }
 require $mantis . '/core/classes/MantisPlugin.class.php';
 require $mantis . '/api/rest/restcore/AuthMiddleware.php';
+require $mantis . '/api/rest/restcore/ApiEnabledMiddleware.php';
+require $mantis . '/api/rest/restcore/VersionMiddleware.php';
+require $mantis . '/api/rest/restcore/OfflineMiddleware.php';
+require $mantis . '/api/rest/restcore/CacheMiddleware.php';
+require $mantis . '/core/exceptions/LegacyApiFaultException.php';
 require $mantis . '/core/file_api.php';
 require __DIR__ . '/upload-storage.php';
 require __DIR__ . '/management-fixture.php';
@@ -65,7 +74,8 @@ function reset_state() {
     }
     $GLOBALS['test_mantis'] = array(
         'tokens' => array('alice-key' => 1, 'bob-key' => 2, 'disabled-key' => 3),
-        'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled'),
+        'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled', 4 => 'guest'),
+        'anonymous' => false, 'api_access' => true, 'offline' => false,
         'current' => 0, 'writes' => false, 'calls' => array(),
         'max_bytes' => 1048576, 'forced_user' => null,
         'max_download_bytes' => \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, 'download_threshold' => 25,
@@ -85,7 +95,7 @@ function reset_state() {
                 30 => '10:new,90:closed', 40 => '10:new,90:closed', 50 => '20:feedback,60:working,90:closed',
                 60 => '20:feedback,50:assigned,70:resolved,90:closed', 70 => '50:assigned,80:testing,90:closed',
                 80 => '50:assigned,90:closed', 90 => '20:feedback'),
-            'set_status_threshold' => array(), 'bug_submit_status' => 10,
+            'webservice_rest_enabled' => ON, 'set_status_threshold' => array(), 'bug_submit_status' => 10,
             'report_bug_threshold' => 25, 'update_bug_status_threshold' => 25,
             'update_bug_threshold' => 25, 'webservice_readonly_access_level_threshold' => 10,
             'add_bugnote_threshold' => 25, 'set_view_status_threshold' => 25,
@@ -118,10 +128,26 @@ function auth_get_current_user_id() {
 function auth_is_user_authenticated() {
     return auth_get_current_user_id() > 0;
 }
+function auth_get_current_user_cookie($autoLogin) { return 'fixture-session'; }
+function auth_anonymous_enabled() { return $GLOBALS['test_mantis']['anonymous']; }
+function auth_anonymous_account() { return 'guest'; }
+function mc_version() { return 'fixture-native-version'; }
+function mci_is_mantis_offline() { return $GLOBALS['test_mantis']['offline']; }
+function error_map_mantis_error_to_http_code($code) {
+    $status = array(ERROR_ACCESS_DENIED => 403, ERROR_BUG_NOT_FOUND => 404);
+    return isset($status[$code]) ? $status[$code] : 500;
+}
 function user_get_username($id) {
     return $GLOBALS['test_mantis']['users'][$id];
 }
 function mci_check_login($username, $password) {
+    if ($password === 'fixture-session' && auth_is_user_authenticated()) {
+        return $username === user_get_username(auth_get_current_user_id());
+    }
+    if ($password === '' && $username === 'guest' && auth_anonymous_enabled()) {
+        $GLOBALS['test_mantis']['current'] = 4;
+        return true;
+    }
     $id = api_token_get_user($password);
     if (!$id || $id === 3 || user_get_username($id) !== $username) {
         return false;
@@ -130,7 +156,7 @@ function mci_check_login($username, $password) {
     return true;
 }
 function mci_has_readonly_access() {
-    return true;
+    return $GLOBALS['test_mantis']['api_access'];
 }
 function config_get_global($name, $default = null) {
     if ($name === 'core_path') { return getenv('MANTISBT_SOURCE') . '/core/'; }
@@ -261,7 +287,9 @@ function rest_issue_get($request, $response, $path) {
     $id = isset($path['id']) ? $path['id'] : 93 + auth_get_current_user_id();
     if (in_array($id, isset($GLOBALS['test_mantis']['denied_issue_ids']) ? $GLOBALS['test_mantis']['denied_issue_ids'] : array(), true)
         || ($id !== 93 + auth_get_current_user_id() && $id !== 96)) {
-        return $response->withStatus(404);
+        if (isset($GLOBALS['test_mantis']['issue_fault'])) { throw $GLOBALS['test_mantis']['issue_fault']; }
+        $status = isset($GLOBALS['test_mantis']['issue_denial_status']) ? $GLOBALS['test_mantis']['issue_denial_status'] : 404;
+        return $response->withJson(array('diagnostic' => 'private fixture detail'))->withStatus($status, 'Private fixture reason');
     }
     return $response->withJson(array('issues' => array(array('id' => $id,
         'summary' => 'Visible to ' . user_get_username(auth_get_current_user_id()),
@@ -309,7 +337,12 @@ function send_request($message, $token = 'alice-key', array $options = array()) 
     // A PHP-FPM request starts with fresh process-local request state.
     $GLOBALS['test_mantis']['current'] = isset($options['cookie_user']) ? $options['cookie_user'] : 0;
     $app = new \Slim\App(array('settings' => array('displayErrorDetails' => false)));
+    $app->add(new \ApiEnabledMiddleware());
     $app->add(new \AuthMiddleware());
+    $app->add(new \VersionMiddleware());
+    $app->add(new \OfflineMiddleware());
+    $app->add(new \CacheMiddleware());
+    if (isset($options['middleware'])) { $app->add($options['middleware']); }
     $plugin = new \MantisMcpPlugin('MantisMcp');
     $plugin->routes('EVENT_REST_API_ROUTES', array('app' => $app));
     $app->get('/unrelated', function($request, $response) {
@@ -331,7 +364,8 @@ function send_request($message, $token = 'alice-key', array $options = array()) 
     fwrite($stream, is_string($message) ? $message : json_encode($message));
     rewind($stream);
     $request = $request->withBody(new \Slim\Http\Body($stream));
-    return $app->process($request, new \Slim\Http\Response());
+    $app->getContainer()['request'] = $request;
+    return $app->run(true);
 }
 
 function rpc($method, $params = null, $id = 1) {

@@ -57,10 +57,16 @@ Bare tokens are accepted for compatibility with MantisBT's REST conventions.
 The plugin normalizes Bearer headers for MantisBT 2.26.4 only on its own MCP
 endpoint. Other REST endpoints are unaffected.
 
-Missing, invalid and revoked tokens return HTTP 401. Cookie-only and anonymous
-access are rejected even when anonymous REST access is enabled. Disabled accounts
-and API access restrictions are still handled by MantisBT. Impersonation headers
-are rejected: MCP acts as the token owner.
+Discovery requires a personal API token accepted by MantisBT. A missing, invalid
+or revoked token, a disabled account and an account without REST access receive
+the same empty HTTP 401 response with a bare `WWW-Authenticate: Bearer` challenge.
+This also applies to browser sessions and installations with guest REST access.
+An invalid Origin or an impersonation header receives an empty HTTP 403.
+Only an authenticated MCP client receives server information, instructions or tool schemas.
+
+MCP omits native username, login method and MantisBT version headers. When a
+tool cannot read an item, native forbidden and missing results have the same
+public message. Upload session errors also conceal other users' transfer and lock state.
 
 Tokens are not configured in the plugin, cached, returned in tool results, or
 written to plugin logs. There is no shared user-data cache. Responses use
@@ -186,8 +192,10 @@ MANTISBT_SOURCE=../mantisbt-2.26.4 composer test
 python3 scripts/package.py
 ```
 
-Tests use the actual MantisBT 2.26.4 and 2.29.0 `MantisPlugin` base class and
-`AuthMiddleware` with real Slim HTTP requests and an in-memory test datastore.
+Tests use the actual MantisBT 2.26.4 and 2.29.0 plugin base class and REST
+middleware with real Slim HTTP requests and an in-memory test datastore.
+Disclosure tests check response bytes, headers and reason phrases, native
+exceptions, private-note attachments and upload session isolation.
 They cover protocol handling, authentication, token revocation, account
 separation, input bounds, REST dispatch and write-tool gating. Upload tests
 execute each version's actual native command, file API, MIME detection and

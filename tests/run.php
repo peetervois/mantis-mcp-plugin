@@ -82,7 +82,7 @@ test_case('rejects unknown and revoked tokens', function() {
 });
 
 test_case('rejects disabled accounts through MantisBT AuthMiddleware', function() {
-    same(403, send_request(rpc('tools/list'), 'disabled-key')->getStatusCode());
+    same(401, send_request(rpc('tools/list'), 'disabled-key')->getStatusCode());
 });
 
 test_case('accepts legacy bare API tokens and case-insensitive Bearer schemes', function() {
@@ -298,7 +298,7 @@ test_case('keeps native REST permission failures as MCP tool errors', function()
         'bob-key');
     same(200, $response->getStatusCode());
     same(true, decoded($response)->result->isError);
-    check(strpos(decoded($response)->result->content[0]->text, 'not allowed') !== false);
+    same('The item does not exist or is not accessible to your MantisBT account.', decoded($response)->result->content[0]->text);
 });
 
 test_case('rejects empty updates and maps permitted numeric references', function() {
@@ -338,6 +338,7 @@ require __DIR__ . '/note-attachments.php';
 require __DIR__ . '/smoke-checks.php';
 require __DIR__ . '/attachment-policy.php';
 require __DIR__ . '/upload-sessions.php';
+require __DIR__ . '/disclosure.php';
 
 reset_upload_staging();
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";

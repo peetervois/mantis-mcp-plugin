@@ -7,6 +7,7 @@ final class UploadSessions {
     const CHUNK_BYTES = 262144;
     const IDLE_SECONDS = 86400;
     const MAX_STATE_BYTES = 2097152;
+    private const UNAVAILABLE = 'Upload session is unavailable.';
 
     public static function chunkLimit($requestBytes) {
         $budget = Http::requestLimit($requestBytes);
@@ -38,15 +39,16 @@ final class UploadSessions {
         $root = self::root(false);
         $base = $root . '/' . $id;
         if (!preg_match('/\A[a-f0-9]{64}\z/', $id) || is_link($base . '.lock') || !is_file($base . '.lock')) {
-            throw new ToolFailure('Upload session is unavailable. Read the issue before starting another upload.');
+            throw new ToolFailure(self::UNAVAILABLE);
         }
         $lock = @fopen($base . '.lock', 'r+b');
-        if ($lock === false) { throw new ToolFailure('Upload session is unavailable.'); }
+        if ($lock === false) { throw new ToolFailure(self::UNAVAILABLE); }
         try {
-            if (!flock($lock, LOCK_EX | LOCK_NB)) { throw new ToolFailure('Upload session is busy; inspect its status before retrying.'); }
+            // Until ownership is verified, even lock contention is private.
+            if (!flock($lock, LOCK_EX | LOCK_NB)) { throw new ToolFailure(self::UNAVAILABLE); }
             $state = self::load($base);
             $state['idle_seconds'] = $idleSeconds;
-            if ($state['owner_id'] !== (int) auth_get_current_user_id()) { throw new ToolFailure('Upload session is unavailable.'); }
+            if ($state['owner_id'] !== (int) auth_get_current_user_id()) { throw new ToolFailure(self::UNAVAILABLE); }
             if ($state['expires_at'] <= time()) {
                 self::discard($base);
                 throw new ToolFailure('Upload session expired. Read the issue before starting another upload.');
@@ -95,7 +97,7 @@ final class UploadSessions {
             throw new ToolFailure('Could not create private upload staging.');
         }
         if (is_link($root) || !is_dir($root) || (fileperms($root) & 0777) !== 0700) {
-            throw new ToolFailure('Private upload staging is unavailable.');
+            throw new ToolFailure($create ? 'Private upload staging is unavailable.' : self::UNAVAILABLE);
         }
         return $root;
     }
@@ -132,14 +134,14 @@ final class UploadSessions {
     }
 
     private static function load($base) {
-        if (is_link($base . '.json') || !is_file($base . '.json')) { throw new ToolFailure('Upload session is unavailable.'); }
+        if (is_link($base . '.json') || !is_file($base . '.json')) { throw new ToolFailure(self::UNAVAILABLE); }
         $stream = @fopen($base . '.json', 'rb');
-        if ($stream === false) { throw new ToolFailure('Upload session is unavailable.'); }
+        if ($stream === false) { throw new ToolFailure(self::UNAVAILABLE); }
         try { $raw = stream_get_contents($stream, self::MAX_STATE_BYTES + 1); }
         finally { fclose($stream); }
         $state = is_string($raw) && strlen($raw) <= self::MAX_STATE_BYTES ? json_decode($raw, true) : null;
         if (!is_array($state) || !isset($state['owner_id'], $state['issue_id'], $state['size'], $state['state'],
-            $state['received'], $state['sha256'], $state['expires_at'])) { throw new ToolFailure('Upload session state is unavailable.'); }
+            $state['received'], $state['sha256'], $state['expires_at'])) { throw new ToolFailure(self::UNAVAILABLE); }
         if (!is_int($state['owner_id']) || !is_int($state['issue_id']) || !is_int($state['size'])
             || $state['size'] < 1 || !is_int($state['received']) || $state['received'] < 0
             || $state['received'] > $state['size'] || !is_int($state['expires_at'])
@@ -147,7 +149,7 @@ final class UploadSessions {
             || !isset($state['upload_id'], $state['filename'], $state['mime_type'])
             || $state['upload_id'] !== basename($base) || !is_string($state['sha256'])
             || !preg_match('/\A[a-f0-9]{64}\z/', $state['sha256'])) {
-            throw new ToolFailure('Upload session state is unavailable.');
+            throw new ToolFailure(self::UNAVAILABLE);
         }
         return $state;
     }

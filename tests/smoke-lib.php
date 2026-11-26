@@ -31,10 +31,12 @@ final class Checks {
 
     public function run(array $options = array()) {
         foreach (array('missing', 'invalid') as $role) {
-            $r = call_user_func($this->request, $role, 'tools/list', new \stdClass());
-            self::ensure($r[0] === 401, 'Missing/invalid-token rejection');
+            foreach (array('initialize' => self::initializeParams(), 'tools/list' => new \stdClass()) as $method => $params) {
+                $r = call_user_func($this->request, $role, $method, $params);
+                self::ensure($r[0] === 401 && $r[1] === null, 'Anonymous discovery denial');
+            }
         }
-        $this->say('PASS missing and invalid tokens rejected');
+        $this->say('PASS discovery withheld for missing and invalid tokens');
         $primary = $this->session('primary', $options);
         if (!empty($options['secondary'])) {
             $secondary = $this->session('secondary', isset($options['secondary_options']) ? $options['secondary_options'] : array());
@@ -61,9 +63,13 @@ final class Checks {
         return $r->structuredContent;
     }
 
+    private static function initializeParams() {
+        return (object) array('protocolVersion' => '2025-06-18', 'capabilities' => new \stdClass(),
+            'clientInfo' => (object) array('name' => 'mantis-mcp-smoke', 'version' => '0.2.0'));
+    }
+
     private function session($role, array $options) {
-        $init = $this->rpc($role, 'initialize', (object) array('protocolVersion' => '2025-06-18',
-            'capabilities' => new \stdClass(), 'clientInfo' => (object) array('name' => 'mantis-mcp-smoke', 'version' => '0.2.0')));
+        $init = $this->rpc($role, 'initialize', self::initializeParams());
         self::ensure(isset($init->serverInfo->name, $init->serverInfo->version, $init->protocolVersion)
             && $init->serverInfo->name === 'mantis-mcp-plugin' && is_string($init->serverInfo->version)
             && $init->serverInfo->version !== '' && isset($init->capabilities->tools)
@@ -138,14 +144,13 @@ final class Checks {
         $r = call_user_func($this->request, $role, 'tools/call', (object) array('name' => $name, 'arguments' => (object) array('issue_id' => $id)));
         self::ensure($r[0] === 200 && isset($r[1]->result), 'Access-denial response');
         $v = $r[1]->result;
-        $messages = array('The item does not exist or is not accessible to your MantisBT account.',
-            'Your MantisBT account is not allowed to perform this operation.');
-        self::ensure(isset($v->isError) && $v->isError === true && isset($v->content) && is_array($v->content), 'Access denial');
-        $texts = array_filter($v->content, function($c) use ($messages) {
-            return isset($c->type, $c->text) && $c->type === 'text' && in_array($c->text, $messages, true);
-        });
-        $extra = isset($v->structuredContent) ? array_diff(array_keys((array) $v->structuredContent), array('error_code')) : array();
-        self::ensure(count($texts) === 1 && count($v->content) === 1 && !$extra, 'Recognized permission denial without issue data');
+        self::ensure(isset($v->isError, $v->content) && $v->isError === true && is_array($v->content)
+            && count($v->content) === 1 && isset($v->content[0])
+            && !array_diff(array_keys((array) $v), array('content', 'isError')), 'Access denial without issue data');
+        $block = $v->content[0];
+        self::ensure(isset($block->type, $block->text) && $block->type === 'text'
+            && $block->text === 'The item does not exist or is not accessible to your MantisBT account.'
+            && !array_diff(array_keys((array) $block), array('type', 'text')), 'Generic permission denial');
     }
 
     public static function inventory(array $tools, $writes = 'auto') {

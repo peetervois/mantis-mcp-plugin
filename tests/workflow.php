@@ -48,7 +48,7 @@ test_case('failed native REST status updates preserve the error and direct readb
     $result = management_call('mantis_update_issue', array('issue_id' => 95,
         'changes' => (object) array('status_id' => 70)), 'bob-key')->result;
     same(true, $result->isError);
-    check(strpos($result->content[0]->text, 'Your MantisBT account is not allowed') !== false);
+    check(strpos($result->content[0]->text, 'The item does not exist or is not accessible') === 0);
     check(strpos($result->content[0]->text, 'mantis_get_workflow') !== false);
     check(strpos($result->content[0]->text, 'read-only/reopen') !== false);
     $d = $result->structuredContent;

@@ -164,26 +164,37 @@ final class RestApi {
         $request = $this->request->withMethod($method)->withQueryParams($query)->withParsedBody($payload)
             ->withoutHeader('If-Match')->withoutHeader('If-None-Match')
             ->withoutHeader('If-Modified-Since');
-        $response = call_user_func($this->handlers[$handler], $request,
-            call_user_func($this->responseFactory), $path);
+        try {
+            $response = call_user_func($this->handlers[$handler], $request,
+                call_user_func($this->responseFactory), $path);
+        } catch (\Mantis\Exceptions\LegacyApiFaultException $error) {
+            throw self::statusFailure($error->getCode());
+        } catch (\Mantis\Exceptions\MantisException $error) {
+            throw self::statusFailure(error_map_mantis_error_to_http_code($error->getCode()));
+        }
         $status = $response->getStatusCode();
         if ($status < 200 || $status >= 300) {
-            $messages = array(
-                400 => 'MantisBT rejected the supplied values.',
-                401 => 'MantisBT authentication is required.',
-                403 => 'Your MantisBT account is not allowed to perform this operation.',
-                404 => 'The item does not exist or is not accessible to your MantisBT account.',
-                409 => 'The requested change conflicts with the current MantisBT state.',
-                412 => 'The issue changed; read it again before retrying.',
-            );
-            throw new ToolFailure(isset($messages[$status])
-                ? $messages[$status] : 'MantisBT could not complete the operation.');
+            throw self::statusFailure($status);
         }
         $data = json_decode((string) $response->getBody());
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new ToolFailure('MantisBT returned an unexpected response.');
         }
         return $data;
+    }
+
+    private static function statusFailure($status) {
+        if ($status === 403 || $status === 404) {
+            return new ToolFailure('The item does not exist or is not accessible to your MantisBT account.');
+        }
+        $messages = array(
+            400 => 'MantisBT rejected the supplied values.',
+            401 => 'MantisBT authentication is required.',
+            409 => 'The requested change conflicts with the current MantisBT state.',
+            412 => 'The issue changed; read it again before retrying.',
+        );
+        return new ToolFailure(isset($messages[$status])
+            ? $messages[$status] : 'MantisBT could not complete the operation.');
     }
 
     private function fields(array $arguments) {
