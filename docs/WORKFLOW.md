@@ -1,5 +1,15 @@
 # Workflow inspection
 
+Failed `mantis_update_issue` calls that requested `status_id` retain their
+original sanitized error and add a short workflow hint in both text and
+`structuredContent.workflow_hint`. The hint names two read tools with the
+caller-supplied issue id: first `mantis_get_issue`, then `mantis_get_workflow`.
+It adds no actual issue state, performs no extra reads, and never retries a
+write. The status change is unconfirmed: a later error may follow a partial
+write, so readback must precede any retry. The hint does not assert that workflow
+was the cause; permission, read-only/reopen rules, required fields and native
+validation still apply even if the graph offers a candidate transition.
+
 `mantis_get_workflow(issue_id)` is a read-only operation for an accessible issue.
 It returns the issue/project ids, current status, effective status names/labels,
 native status thresholds, a graph of allowed transition ids, and the intersection

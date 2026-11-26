@@ -43,3 +43,60 @@ test_case('bounds unusually large workflows and restores context even on failure
     same(999, $GLOBALS['g_project_override']);
 });
 
+test_case('failed native REST status updates preserve the error and direct readback then workflow inspection', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $result = management_call('mantis_update_issue', array('issue_id' => 95,
+        'changes' => (object) array('status_id' => 70)), 'bob-key')->result;
+    same(true, $result->isError);
+    check(strpos($result->content[0]->text, 'Your MantisBT account is not allowed') !== false);
+    check(strpos($result->content[0]->text, 'mantis_get_workflow') !== false);
+    check(strpos($result->content[0]->text, 'read-only/reopen') !== false);
+    $d = $result->structuredContent;
+    same('STATUS_CHANGE_NOT_CONFIRMED', $d->error_code);
+    same('mantis_get_issue', $d->workflow_hint->next_reads[0]->tool);
+    same('mantis_get_workflow', $d->workflow_hint->next_reads[1]->tool);
+    same(95, $d->workflow_hint->next_reads[1]->arguments->issue_id);
+    same(false, $d->workflow_hint->retry_automatically);
+    same(true, $d->workflow_hint->native_validation_still_applies);
+    same(array('update'), array_column($GLOBALS['test_mantis']['calls'], 'name'));
+});
+
+test_case('workflow hints cover unconfirmed internal failures without exposing exception text or issue state', function() {
+    $p = new \Tauria\MantisMcp\Protocol(new \Tauria\MantisMcp\Tools(true), function() {
+        throw new RuntimeException('private internal diagnostic value');
+    });
+    $response = $p->handle(tool_call('mantis_update_issue', (object) array('issue_id' => 123,
+        'changes' => (object) array('status_id' => 80))));
+    same(true, $response['result']['isError']);
+    check(strpos(json_encode($response), 'private internal diagnostic value') === false);
+    $hint = $response['result']['structuredContent']->workflow_hint;
+    same(123, $hint->next_reads[0]->arguments->issue_id);
+    same(array(), $GLOBALS['test_mantis']['calls']);
+    same(array('next_reads', 'retry_automatically', 'native_validation_still_applies'), array_keys((array) $hint));
+});
+
+test_case('successful updates and status-free failures have no workflow hint', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $ok = management_call('mantis_update_issue', array('issue_id' => 94,
+        'changes' => (object) array('status_id' => 50)))->result;
+    same(false, $ok->isError);
+    check(!isset($ok->structuredContent->workflow_hint));
+    $failed = management_call('mantis_update_issue', array('issue_id' => 95,
+        'changes' => (object) array('summary' => 'A title')), 'bob-key')->result;
+    same(true, $failed->isError);
+    check(!isset($failed->structuredContent));
+    check(strpos($failed->content[0]->text, 'mantis_get_workflow') === false);
+});
+
+test_case('workflow hints do not weaken schema validation or add state to inaccessible read errors', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $bad = management_call('mantis_update_issue', array('issue_id' => 94,
+        'changes' => (object) array('status_id' => 'closed')));
+    same(-32602, $bad->error->code);
+    check(!isset($bad->result));
+    $denied = management_call('mantis_get_workflow', array('issue_id' => 95))->result;
+    same(true, $denied->isError);
+    check(!isset($denied->structuredContent));
+    check(strpos($denied->content[0]->text, 'mantis_get_workflow') === false);
+});
+
