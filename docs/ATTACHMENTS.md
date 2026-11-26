@@ -48,23 +48,44 @@ python3 scripts/assemble-attachment.py chunks.json --output-dir downloads
 
 The output directory must already exist. The helper makes no network calls,
 uses no credentials and refuses to overwrite existing files or symlinks. Its
-input limit is 32 MiB and its decoded-file limit is 8 MiB. File data received
+output is a private mode-0600 file, published only after complete verification.
+There is no default total-file or total-input cap. For large downloads, capture
+one chunk object per line and stream validation/assembly with bounded client memory:
+
+```bash
+python3 scripts/assemble-attachment.py chunks.jsonl --json-lines --output-dir downloads
+```
+
+JSON Lines has a per-chunk envelope budget, with no cap on the sum of lines.
+The legacy JSON-array mode still loads the input JSON into memory. Optional
+`--max-bytes` sets an explicit local file cap. Temporary output is removed on
+handled validation/write errors. An abrupt client shutdown can leave a local
+`.mantis-download-*` file; discard it before starting another assembly. Saving
+uses an atomic exclusive hard link in the destination filesystem to avoid
+publishing partial bytes or overwriting existing files. File data received
 through MCP remains subject to the caller's usual file-storage and sharing
 choices; do not commit private downloaded attachments or chunk captures.
 
 ## Limits and permissions
 
-The default maximum original file size is 5 MiB. Configure it in the existing
-PHP block in `config/config_inc.php` if needed:
+From 0.7.0 there is no default MCP total-file cap, so existing accessible
+attachments larger than 5 MiB or the former 8 MiB ceiling can be downloaded in
+the same bounded chunks. A new upload limit does not prohibit downloading an
+older attachment. To deliberately cap downloads, configure a positive integer
+inside the existing PHP block in `config/config_inc.php`:
 
 ```php
-$g_plugin_MantisMcp_max_download_bytes = 5242880;
+$g_plugin_MantisMcp_max_download_bytes = 16777216; // Optional explicit 16 MiB cap.
 ```
 
-The setting is clamped to 1 KiB–8 MiB. Oversized metadata is rejected before the
-native REST handler reads file content. MantisBT's native handler reads a
-permitted file in full on every chunk request, so the hard limit bounds the
-memory used by that operation. Files larger than the limit fail explicitly.
+Leave that override unset, or set it to `false`, for no MCP total-file cap.
+Existing positive overrides stay enforced before the native content read;
+there is no fixed hard ceiling or minimum floor imposed on an explicit cap.
+The native REST handler still reads a permitted file in full on each request.
+Server PHP memory and execution/storage limits therefore remain practical
+constraints; bounded MCP output does not make the native read memory-bounded.
+Malformed native content must fit the attachment's verified metadata size and
+pass canonical encoding, exact length and full SHA-256 checks before output.
 
 The plugin checks issue access first, verifies the attachment belongs to that
 issue, applies native view/download thresholds and checks private-note access.

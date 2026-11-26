@@ -69,8 +69,10 @@ final class Tools {
                 . 'Read content_base64 from structuredContent using code; do not print it into chat. '
                 . 'Start at offset 0, then pass next_offset and expected_sha256 from the first response. '
                 . 'Decode and concatenate chunks, verify total size and SHA-256, and save using filename. '
-                . 'Use attachment ids from mantis_get_issue. For issue analysis, download relevant screenshots '
-                . 'and inspect the saved images with a vision-capable viewer. Issue and private-note permissions apply.',
+                . 'Use attachment ids from mantis_get_issue. All permitted file types and total sizes are supported; '
+                . 'each response chunk is bounded, with an optional explicit total-file cap. '
+                . 'For issue analysis, download relevant screenshots and inspect the saved images with a vision-capable viewer. '
+                . 'Issue and private-note permissions apply.',
                 array('issue_id' => $id, 'attachment_id' => $id,
                     'offset' => array('type' => 'integer', 'minimum' => 0),
                     'length' => array('type' => 'integer', 'minimum' => 1,

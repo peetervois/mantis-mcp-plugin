@@ -68,7 +68,7 @@ function reset_state() {
         'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled'),
         'current' => 0, 'writes' => false, 'calls' => array(),
         'max_bytes' => 1048576, 'forced_user' => null,
-        'max_download_bytes' => 5242880, 'download_threshold' => 25,
+        'max_download_bytes' => \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, 'download_threshold' => 25,
         'allow_download_own' => false, 'attachments' => array(),
         'file_response_override' => null,
         'max_upload_bytes' => 524288, 'upload_threshold' => 25,

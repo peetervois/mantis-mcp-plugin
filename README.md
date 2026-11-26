@@ -126,6 +126,8 @@ preparation helper, size limits and handling of uncertain write results.
 Use [chunked uploads](docs/CHUNK-UPLOADS.md) for files larger than one request.
 The assembled file inherits MantisBT's size limit by default, with no separate
 MCP total-size ceiling. Native file-type, permission and PHP checks still apply.
+Downloads likewise have no default MCP total-file ceiling; responses remain
+bounded chunks, and an administrator can set an explicit download cap.
 See [relationships](docs/RELATIONSHIPS.md), [workflow inspection](docs/WORKFLOW.md)
 and [attachment deletion](docs/DELETION.md) for discovery, permissions and live
 acceptance. Inspect workflow before status changes rather than guessing the

@@ -116,8 +116,8 @@ file, without applying that request budget to its total size. Native MantisBT
 also checks PHP `upload_max_filesize` and `post_max_size` against the completed
 file, so those settings can lower the native accepted maximum. Native limits,
 web-server/client limits, disk capacity and PHP memory remain authoritative.
-Download limits are separate and unchanged; accepting a larger upload does not
-automatically make a complete MCP download available under its configured cap.
+Download policy is separate; from 0.7.0 it has no default MCP total-file cap.
+An explicitly configured download cap can still prevent a larger round trip.
 
 The preparation helper has no default total-file cap. Use `--max-bytes` only
 when an explicit local cap is desired. The inline mode encodes the complete

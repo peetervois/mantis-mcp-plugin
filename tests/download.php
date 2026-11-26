@@ -175,6 +175,29 @@ test_case('rejects encoded content exceeding the cap despite small stored metada
     check(!isset($result->structuredContent));
 });
 
+test_case('downloads beyond the former fixed ceilings with bounded responses and exact whole-file integrity', function() {
+    $bytes = str_repeat(implode('', array_map('chr', range(0, 255))), 32769);
+    check(strlen($bytes) > 8 * 1024 * 1024);
+    set_attachment_bytes($bytes);
+    $GLOBALS['test_mantis']['max_file_size'] = 1024; // Existing downloads do not inherit today's upload limit.
+    $offset = 0; $hash = hash('sha256', $bytes); $digest = hash_init('sha256');
+    do {
+        $r = decoded(download_call(array('offset' => $offset, 'expected_sha256' => $hash)))->result;
+        same(false, $r->isError);
+        $c = $r->structuredContent; $part = base64_decode($c->content_base64, true);
+        same(substr($bytes, $offset, 65536), $part);
+        check(strlen($part) <= 65536); same($hash, $c->sha256);
+        hash_update($digest, $part); $offset += strlen($part);
+    } while (!$c->complete);
+    same(strlen($bytes), $offset); same($hash, hash_final($digest));
+    $GLOBALS['test_mantis']['max_download_bytes'] = 16 * 1024 * 1024;
+    same(false, decoded(download_call())->result->isError);
+    $reads = file_reads();
+    $GLOBALS['test_mantis']['max_download_bytes'] = 1024;
+    same(true, decoded(download_call())->result->isError);
+    same($reads, file_reads()); // An explicit cap still rejects before reading native content.
+});
+
 test_case('handles empty files and EOF without inventing extra content', function() {
     set_attachment_bytes('');
     $chunk = decoded(download_call())->result->structuredContent;
