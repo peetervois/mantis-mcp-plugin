@@ -53,7 +53,7 @@ test_case('smoke checks the older core inventory deeply without requiring the op
     list($calls, $lines) = smoke_fixture(function($r, $role, $method) {
         if ($method === 'tools/list' && $r[0] === 200) {
             $r[1]->result->tools = array_values(array_filter($r[1]->result->tools, function($t) {
-                return $t->name !== 'mantis_get_attachment_policy';
+                return !in_array($t->name, Checks::OPTIONAL_READS, true);
             }));
         }
         return $r;
@@ -70,7 +70,7 @@ test_case('smoke rejects a renamed tool even when the advertised tool count is u
 });
 
 test_case('smoke rejects duplicate definitions, bad schemas and incorrect write annotations', function() {
-    foreach (array('duplicate', 'schema', 'annotation', 'partial-write') as $case) {
+    foreach (array('duplicate', 'schema', 'annotation', 'partial-write', 'partial-session', 'missing-session-status', 'unsafe-retry') as $case) {
         $GLOBALS['test_mantis']['writes'] = true;
         smoke_fails(function() use ($case) { smoke_fixture(function($r, $role, $method) use ($case) {
             if ($method === 'tools/list' && $r[0] === 200) {
@@ -79,6 +79,13 @@ test_case('smoke rejects duplicate definitions, bad schemas and incorrect write 
                 if ($case === 'schema') { $tools[6]->inputSchema->properties->issue_id->minimum = 0; }
                 if ($case === 'annotation') { $tools[count($tools) - 1]->annotations->readOnlyHint = true; }
                 if ($case === 'partial-write') { array_pop($tools); }
+                if ($case === 'partial-session' || $case === 'missing-session-status') {
+                    $missing = $case === 'partial-session' ? 'mantis_finish_attachment_upload' : 'mantis_get_attachment_upload';
+                    $tools = array_values(array_filter($tools, function($t) use ($missing) { return $t->name !== $missing; }));
+                }
+                if ($case === 'unsafe-retry') {
+                    foreach ($tools as $t) { if ($t->name === 'mantis_begin_attachment_upload') { $t->annotations->idempotentHint = true; } }
+                }
             }
             return $r;
         }); });

@@ -10,6 +10,9 @@ final class Checks {
     const WRITES = array('mantis_create_issue', 'mantis_update_issue', 'mantis_add_note',
         'mantis_set_relationship', 'mantis_delete_relationship', 'mantis_delete_attachment',
         'mantis_upload_attachment');
+    const SESSION_WRITES = array('mantis_begin_attachment_upload', 'mantis_upload_attachment_chunk',
+        'mantis_finish_attachment_upload', 'mantis_cancel_attachment_upload');
+    const OPTIONAL_READS = array('mantis_get_attachment_policy', 'mantis_get_attachment_upload');
     private $request;
     private $report;
     private $skipped = 0;
@@ -51,7 +54,7 @@ final class Checks {
     }
 
     private function tool($role, $name, array $args = array()) {
-        self::ensure(in_array($name, array_merge(self::READS, array('mantis_get_attachment_policy')), true), 'Read-only call allowlist');
+        self::ensure(in_array($name, array_merge(self::READS, self::OPTIONAL_READS), true), 'Read-only call allowlist');
         $r = $this->rpc($role, 'tools/call', (object) array('name' => $name, 'arguments' => (object) $args));
         self::ensure(isset($r->isError) && $r->isError === false
             && isset($r->structuredContent) && $r->structuredContent instanceof \stdClass, 'Successful structured tool response');
@@ -158,12 +161,13 @@ final class Checks {
             foreach ($s->required as $key) {
                 self::ensure(is_string($key) && property_exists($s->properties, $key), 'Required schema properties');
             }
-            $read = in_array($t->name, array_merge(self::READS, array('mantis_get_attachment_policy')), true);
-            $write = in_array($t->name, self::WRITES, true);
+            $read = in_array($t->name, array_merge(self::READS, self::OPTIONAL_READS), true);
+            $write = in_array($t->name, array_merge(self::WRITES, self::SESSION_WRITES), true);
             self::ensure($read || $write, 'Known exact tool inventory');
-            $destructive = in_array($t->name, array('mantis_update_issue', 'mantis_set_relationship', 'mantis_delete_relationship', 'mantis_delete_attachment'), true);
+            $destructive = in_array($t->name, array('mantis_update_issue', 'mantis_set_relationship', 'mantis_delete_relationship', 'mantis_delete_attachment', 'mantis_cancel_attachment_upload'), true);
+            $idempotent = $read || in_array($t->name, array('mantis_upload_attachment_chunk', 'mantis_finish_attachment_upload', 'mantis_cancel_attachment_upload'), true);
             self::ensure(isset($t->annotations->readOnlyHint, $t->annotations->idempotentHint, $t->annotations->destructiveHint)
-                && $t->annotations->readOnlyHint === $read && $t->annotations->idempotentHint === $read
+                && $t->annotations->readOnlyHint === $read && $t->annotations->idempotentHint === $idempotent
                 && $t->annotations->destructiveHint === $destructive, 'Mutation annotations');
             if (in_array($t->name, array('mantis_get_workflow', 'mantis_get_relationships', 'mantis_get_attachment_policy'), true)) {
                 self::ensure($s->required === array('issue_id') && isset($s->properties->issue_id)
@@ -191,6 +195,11 @@ final class Checks {
         }
         self::ensure(!array_diff(self::READS, array_keys($names)), 'Required read tool inventory');
         $found = array_intersect(self::WRITES, array_keys($names));
+        $sessions = array_intersect(self::SESSION_WRITES, array_keys($names));
+        self::ensure(count($sessions) === 0 || (count($sessions) === 4
+            && count($found) === 7 && isset($names['mantis_get_attachment_upload'])), 'Complete optional chunk upload inventory');
+        self::ensure(!isset($names['mantis_get_attachment_upload']) || count($found) === 0 || count($sessions) === 4,
+            'Chunk writes available when normal writes are enabled');
         self::ensure(count($found) === 0 || count($found) === count(self::WRITES), 'Complete optional write inventory');
         self::ensure($writes !== 'required' || count($found) === count(self::WRITES), 'Expected write tools');
         self::ensure($writes !== 'disabled' || count($found) === 0, 'Expected read-only inventory');
@@ -291,11 +300,16 @@ final class Checks {
             && $r->extension_case_sensitive === false && $r->disallowed_takes_precedence === true
             && $r->allow_other_extensions === ($known ? trim($p->allowed_files->value) === '' : null), 'Native policy interpretation');
         $l = $data->limits;
-        foreach (array('plugin_upload_bytes', 'mcp_request_bytes', 'php_upload_max_filesize_bytes', 'php_post_max_size_bytes') as $key) {
+        foreach (array('mcp_request_bytes', 'php_upload_max_filesize_bytes', 'php_post_max_size_bytes') as $key) {
             self::ensure(isset($l->$key) && is_int($l->$key) && $l->$key >= 0, 'Upload/request size types');
         }
-        $expected = $p->max_file_size->available ? min($p->max_file_size->value, $l->plugin_upload_bytes,
-            $l->php_upload_max_filesize_bytes, $l->php_post_max_size_bytes) : null;
+        self::ensure(property_exists($l, 'plugin_upload_bytes') && ($l->plugin_upload_bytes === null
+            || (is_int($l->plugin_upload_bytes) && $l->plugin_upload_bytes >= 0)), 'Resolved upload size type');
+        $expected = $p->max_file_size->available && $l->plugin_upload_bytes !== null
+            ? min($p->max_file_size->value, $l->plugin_upload_bytes) : null;
+        if ($expected !== null) {
+            $expected = min($expected, $l->php_upload_max_filesize_bytes, $l->php_post_max_size_bytes);
+        }
         self::ensure(property_exists($l, 'decoded_upload_upper_bound_bytes') && $l->decoded_upload_upper_bound_bytes === $expected
             && isset($l->request_envelope_and_other_limits_apply) && $l->request_envelope_and_other_limits_apply === true,
             'Effective upload upper bound and request caveat');

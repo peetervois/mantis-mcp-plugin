@@ -14,6 +14,7 @@ final class Tools {
 
     public function __construct($enableWrites = false) {
         $id = array('type' => 'integer', 'minimum' => 1);
+        $uploadId = array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$');
         $project = array('type' => 'integer', 'minimum' => 0,
             'description' => 'MantisBT project id; 0 means all accessible projects.');
         $select = array('type' => 'string', 'minLength' => 1, 'maxLength' => 512,
@@ -47,6 +48,11 @@ final class Tools {
                 . 'Native deny rules take precedence. Empty allowed_files is distinct from an unavailable setting. '
                 . 'Request/PHP/native limits and upload permissions still apply; this is not a MIME allowlist.',
                 array('issue_id' => $id), array('issue_id')),
+            self::tool('mantis_get_attachment_upload',
+                'Read an owned upload session state, received bytes and next offset after interruption. '
+                . 'Only the owner with current issue access can inspect it; no file bytes are returned. '
+                . 'An unconfirmed finalization requires issue readback, never another blind write.',
+                array('upload_id' => $uploadId), array('upload_id')),
             self::tool('mantis_get_workflow',
                 'Inspect the effective workflow graph and current-user status thresholds for an accessible issue. '
                 . 'Read this before changing status; discover intermediate states instead of guessing transitions. '
@@ -125,11 +131,46 @@ final class Tools {
                 . 'created for a user-authorized test. Read its issue and metadata first. Issue ownership, note visibility, '
                 . 'read-only state and native delete permissions apply. This cannot be undone.',
                 array('issue_id' => $id, 'attachment_id' => $id), array('issue_id', 'attachment_id'), true, true);
+            $begin = self::uploadFileProperties();
+            unset($begin['content_base64']);
+            $begin['issue_id'] = $id;
+            $begin['size'] = $id;
+            $begin['note_id'] = $id;
+            $begin['new_note'] = self::objectSchema(array(
+                'text' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 65535),
+                'private' => array('type' => 'boolean')), array('text'));
+            $this->definitions[] = self::tool('mantis_begin_attachment_upload',
+                'Begin private staging of one original file. Compute total size and SHA-256 from the original in code. '
+                . 'The assembled-file limit follows MantisBT unless an explicit MCP cap is configured. '
+                . 'Use returned max_chunk_bytes and next_offset to send bounded chunks, then finish once. '
+                . 'Optional note_id targets an editable existing note; optional new_note creates text and file together '
+                . 'only at finalization. Do not combine them. Sessions expire after inactivity.',
+                $begin, array('issue_id', 'filename', 'mime_type', 'size', 'sha256'), true, false);
+            $this->definitions[] = self::tool('mantis_upload_attachment_chunk',
+                'Append bounded original-file bytes at the next offset, with canonical base64 and this chunk\'s SHA-256. '
+                . 'Compute bytes in code and never print base64 into chat. An exact replay is safe; changed or out-of-order '
+                . 'chunks fail. Inspect session status after uncertainty. No Mantis attachment exists until finalization.',
+                array('upload_id' => $uploadId, 'offset' => array('type' => 'integer', 'minimum' => 0),
+                    'content_base64' => array('type' => 'string', 'minLength' => 4,
+                        'maxLength' => 4 * (int) ceil(UploadSessions::CHUNK_BYTES / 3)),
+                    'sha256' => array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$')),
+                array('upload_id', 'offset', 'content_base64', 'sha256'), true, false, true);
+            $this->definitions[] = self::tool('mantis_finish_attachment_upload',
+                'Verify the complete staged file and create its native Mantis attachment/note, rechecking permissions '
+                . 'and current native size/type rules. Returns the verified stored-file receipt. Completed sessions return '
+                . 'the same receipt without another write. After unconfirmed finalization, read the issue and session; '
+                . 'the server will not blindly repeat the native write.',
+                array('upload_id' => $uploadId), array('upload_id'), true, false, true);
+            $this->definitions[] = self::tool('mantis_cancel_attachment_upload',
+                'Cancel an owned unfinished upload and remove only its staged temporary bytes. '
+                . 'This never deletes a completed Mantis attachment. Use only when cancellation or disposable-test cleanup is intended.',
+                array('upload_id' => $uploadId), array('upload_id'), true, true, true);
             $this->definitions[] = self::tool('mantis_upload_attachment',
                 'Attach one user-supplied file to an existing accessible issue as the token owner. '
                 . 'Use code to read the original local file, compute SHA-256 and base64-encode its bytes; '
-                . 'do not invent file content or print encoded data in chat. The default decoded limit is '
-                . '512 KiB; server, PHP and MantisBT limits also apply. The server cannot read client paths or URLs. '
+                . 'do not invent file content or print encoded data in chat. Total size follows the issue project\'s '
+                . 'MantisBT limit unless an explicit MCP cap is configured. Use chunked upload for larger files. '
+                . 'The server cannot read client paths or URLs. '
                 . 'Use mantis_get_attachment_policy before uploading; arbitrary permitted file types are supported. '
                 . 'Returns verified stored-file metadata, including an attachment id for download/readback. '
                 . 'Native MantisBT may rename duplicate filenames. This write is not idempotent: after a timeout '
@@ -161,6 +202,9 @@ final class Tools {
                     && $arguments->offset > 0 && !isset($arguments->expected_sha256)) {
                     throw new ProtocolError('expected_sha256 is required for a resumed download.', -32602);
                 }
+                if ($name === 'mantis_begin_attachment_upload' && isset($arguments->note_id, $arguments->new_note)) {
+                    throw new ProtocolError('Choose an existing note_id or new_note, not both.', -32602);
+                }
                 return;
             }
         }
@@ -168,14 +212,14 @@ final class Tools {
     }
 
     private static function tool($name, $description, $properties, $required,
-        $write = false, $destructive = false) {
+        $write = false, $destructive = false, $idempotent = null) {
         return array(
             'name' => $name, 'description' => $description,
             'inputSchema' => self::objectSchema($properties, $required),
             'annotations' => array(
                 'readOnlyHint' => !$write,
                 'destructiveHint' => $destructive,
-                'idempotentHint' => !$write,
+                'idempotentHint' => $idempotent === null ? !$write : $idempotent,
                 'openWorldHint' => false,
             ),
         );
@@ -198,8 +242,7 @@ final class Tools {
         return array('filename' => array('type' => 'string', 'minLength' => 1, 'maxLength' => 250),
             'mime_type' => array('type' => 'string', 'minLength' => 3, 'maxLength' => 127,
                 'pattern' => '^[a-zA-Z0-9!#$&^_.+\-]+/[a-zA-Z0-9!#$&^_.+\-]+$'),
-            'content_base64' => array('type' => 'string', 'minLength' => 4,
-                'maxLength' => AttachmentUpload::MAX_ENCODED_BYTES),
+            'content_base64' => array('type' => 'string', 'minLength' => 4),
             'sha256' => array('type' => 'string', 'pattern' => '^[a-f0-9]{64}$'));
     }
 

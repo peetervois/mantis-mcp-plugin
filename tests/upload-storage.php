@@ -42,7 +42,10 @@ function bug_is_user_reporter($id, $user) { return $id === 93 + $user; }
 function access_has_project_level($threshold, $project, $user = null) { return $threshold <= 55; }
 function bug_attachments_clear_cache($id) { unset($GLOBALS['test_mantis']['attachment_cache'][$id]); }
 function ini_get_bool($name) { return true; }
-function ini_get_number($name) { return $name === 'upload_max_filesize' ? 2097152 : 8388608; }
+function ini_get_number($name) {
+    return isset($GLOBALS['test_mantis']['php_limits'][$name]) ? $GLOBALS['test_mantis']['php_limits'][$name]
+        : ($name === 'upload_max_filesize' ? 2097152 : 8388608);
+}
 function antispam_check() {}
 function is_blank($value) { return $value === null || trim($value) === ''; }
 function project_get_field($id, $field) {

@@ -72,7 +72,7 @@ An OpenAI API key is not involved.
 
 ## Tools
 
-The default configuration exposes eleven read tools:
+The default configuration exposes twelve read tools:
 
 | Tool | Purpose |
 |---|---|
@@ -83,6 +83,7 @@ The default configuration exposes eleven read tools:
 | `mantis_list_issues` | List/filter accessible issues, up to 100 per page. |
 | `mantis_get_issue` | Read an accessible issue and its permitted notes. |
 | `mantis_get_attachment_policy` | Discover native upload extension rules and size limits for an accessible issue. |
+| `mantis_get_attachment_upload` | Inspect an owned staged upload and its next byte offset. |
 | `mantis_get_workflow` | Inspect effective workflow edges and native status thresholds. |
 | `mantis_get_relationship_types` | Discover native/custom relationship types and their reverse types. |
 | `mantis_get_relationships` | Read links whose other issue is accessible to the caller. |
@@ -103,6 +104,10 @@ This additionally exposes:
 | `mantis_update_issue` | Update supported fields using MantisBT's normal rules. |
 | `mantis_add_note` | Add a note, optionally with an original file, as the current user. |
 | `mantis_upload_attachment` | Upload an original file to an issue or existing editable note. |
+| `mantis_begin_attachment_upload` | Start private staging with the original file size and SHA-256. |
+| `mantis_upload_attachment_chunk` | Send bounded original bytes; exact chunk retries are safe. |
+| `mantis_finish_attachment_upload` | Verify and save the assembled file to an issue, new note or existing note. |
+| `mantis_cancel_attachment_upload` | Discard temporary staging without deleting native attachments. |
 | `mantis_set_relationship` | Create or change a native link between accessible issues. |
 | `mantis_delete_relationship` | Delete a selected relationship using native permissions. |
 | `mantis_delete_attachment` | Permanently delete a selected visible attachment using native permissions. |
@@ -116,8 +121,11 @@ cleanup of disposable data created for an authorized test.
 
 See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
 assembly helper, size limits and verification steps.
-See [attachment uploads](docs/UPLOADS.md) for the bounded file input contract,
+See [attachment uploads](docs/UPLOADS.md) for the original file input contract,
 preparation helper, size limits and handling of uncertain write results.
+Use [chunked uploads](docs/CHUNK-UPLOADS.md) for files larger than one request.
+The assembled file inherits MantisBT's size limit by default, with no separate
+MCP total-size ceiling. Native file-type, permission and PHP checks still apply.
 See [relationships](docs/RELATIONSHIPS.md), [workflow inspection](docs/WORKFLOW.md)
 and [attachment deletion](docs/DELETION.md) for discovery, permissions and live
 acceptance. Inspect workflow before status changes rather than guessing the
@@ -134,6 +142,11 @@ An optional global request-size setting is available:
 ```php
 $g_plugin_MantisMcp_max_request_bytes = 1048576; // Default: 1 MiB.
 ```
+
+That setting bounds each HTTP request, not the assembled file. Leave
+`max_upload_bytes` unset to inherit MantisBT. An administrator may explicitly
+choose a smaller MCP total-file cap; see the upload guide. All eleven write
+tools remain controlled by `enable_write_tools` and native user permissions.
 
 ## Test the endpoint
 

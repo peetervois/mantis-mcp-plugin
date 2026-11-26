@@ -3,7 +3,7 @@
 
 // Load exact upstream helper bodies without loading conflicting fixture APIs.
 // No MantisBT implementation source is copied into this repository.
-function load_native_function($path, $name) {
+function load_native_function($path, $name, $alias = null) {
     $source = file_get_contents($path);
     $start = strpos($source, 'function ' . $name . '(');
     if ($start === false) { throw new RuntimeException('Native helper missing: ' . $name); }
@@ -20,6 +20,7 @@ function load_native_function($path, $name) {
             $code .= $token;
             if ($token === '{') { ++$depth; $body = true; }
             if ($token === '}' && --$depth === 0 && $body) {
+                if ($alias !== null) { $code = preg_replace('/\Afunction ' . preg_quote($name, '/') . '\(/', 'function ' . $alias . '(', $code, 1); }
                 eval('use Mantis\\Exceptions\\ClientException;' . $code);
                 return;
             }

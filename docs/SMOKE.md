@@ -11,7 +11,10 @@ missing/invalid-token rejection, initialization, notification and ping, account
 identity, exact known tool names, closed input schemas and mutation annotations.
 Both the read-only inventory and the complete optional write inventory are
 supported. Write definitions are inspected but never invoked. The optional
-attachment-policy read tool is recognized when discovered. With issue checks
+attachment-policy and upload-session status read tools are recognized when discovered.
+The four optional session writes must be present as a complete group, together
+with session status and the base writes. Their idempotency annotations are
+checked without creating or changing any session. With issue checks
 enabled, its absence is explicitly reported as skipped on older servers.
 
 Supply an accessible issue to check its project/status context, full workflow
@@ -44,7 +47,8 @@ unset MANTIS_API_TOKEN
 ```
 
 Replace the example IDs with known test data. `MANTIS_MCP_WRITES` accepts `auto`
-(all seven writes or none), `required`, or `disabled`. It controls inventory
+(all seven base writes or none, plus the complete four-write session group
+when supported), `required`, or `disabled`. It controls inventory
 expectations, not whether any mutation is attempted. `MANTIS_MCP_MAX_PEERS`
 sets the reverse-direction check limit. Credentials are read only from
 environment variables, never URL parameters or command-line arguments. Only

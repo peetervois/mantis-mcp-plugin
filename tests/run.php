@@ -56,7 +56,7 @@ test_case('rejects missing and malformed initialize params', function() {
 
 test_case('lists valid read-only schemas and never changes validation after discovery', function() {
     $response = decoded(send_request(rpc('tools/list')));
-    same(11, count($response->result->tools));
+    same(12, count($response->result->tools));
     foreach ($response->result->tools as $tool) {
         same('object', $tool->inputSchema->type);
         check($tool->inputSchema->properties instanceof stdClass);
@@ -264,10 +264,11 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(18, count($tools));
-    foreach (array_slice($tools, 11) as $tool) {
+    same(23, count($tools));
+    foreach (array_slice($tools, 12) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
-        same(false, $tool->annotations->idempotentHint);
+        same(in_array($tool->name, array('mantis_upload_attachment_chunk', 'mantis_finish_attachment_upload',
+            'mantis_cancel_attachment_upload'), true), $tool->annotations->idempotentHint);
     }
 });
 
@@ -335,6 +336,8 @@ require __DIR__ . '/attachment-delete.php';
 require __DIR__ . '/note-attachments.php';
 require __DIR__ . '/smoke-checks.php';
 require __DIR__ . '/attachment-policy.php';
+require __DIR__ . '/upload-sessions.php';
 
+reset_upload_staging();
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

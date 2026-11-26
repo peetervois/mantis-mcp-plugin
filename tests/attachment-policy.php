@@ -67,7 +67,7 @@ test_case('policy shares the uploader and HTTP limit calculations without claimi
     $GLOBALS['test_mantis']['max_upload_bytes'] = 9000000;
     $GLOBALS['test_mantis']['max_bytes'] = 8388608;
     $p = policy_call()->result->structuredContent;
-    same(5242880, $p->limits->plugin_upload_bytes);
+    same(9000000, $p->limits->plugin_upload_bytes);
     same(8388608, $p->limits->mcp_request_bytes);
     same(2097152, $p->limits->php_upload_max_filesize_bytes);
     same(2097152, $p->limits->decoded_upload_upper_bound_bytes);

@@ -75,8 +75,8 @@ to every resumed request. No cross-request file or account cache is used.
 ## Deploy and verify
 
 Replace the installed `plugins/MantisMcp` directory with the 0.5.0 package and
-upgrade the plugin in MantisBT's plugin manager if offered. Refresh the existing
-Tauria Tasks connection's tool list using its management settings; confirm
+follow the [installation update steps](INSTALL.md). Discover the tools through
+the existing Tauria Tasks connection and confirm
 `mantis_download_attachment` appears. Keep the working API-key remote connection.
 
 Then request an image attachment from an accessible test issue in a fresh Work

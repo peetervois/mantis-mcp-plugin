@@ -24,7 +24,7 @@ final class RestApi {
         $this->request = $request;
         $this->responseFactory = $responseFactory ?: function() { return new \Slim\Http\Response(); };
         $this->maxDownloadBytes = AttachmentDownload::limit($maxDownloadBytes);
-        $this->maxUploadBytes = AttachmentUpload::limit($maxUploadBytes);
+        $this->maxUploadBytes = $maxUploadBytes;
         $this->maxRequestBytes = Http::requestLimit($maxRequestBytes);
         $this->handlers = $handlers + array(
             'user' => 'rest_user_get_me',
@@ -66,6 +66,13 @@ final class RestApi {
                 $data = $this->call('options', 'GET', array('project_id' => $project,
                     'option' => AttachmentPolicy::OPTIONS));
                 return AttachmentPolicy::describe($issueId, $project, $data, $this->maxUploadBytes, $this->maxRequestBytes);
+            case 'mantis_begin_attachment_upload':
+            case 'mantis_upload_attachment_chunk':
+            case 'mantis_get_attachment_upload':
+            case 'mantis_finish_attachment_upload':
+            case 'mantis_cancel_attachment_upload':
+                return UploadSessions::execute($name, $arguments, $this->maxUploadBytes, $this->maxRequestBytes,
+                    function($issueId) { $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $issueId)); });
             case 'mantis_list_issues':
                 $query = $arguments + array('page' => 1, 'page_size' => 20, 'project_id' => 0);
                 return $this->call('issues', 'GET', $query);

@@ -52,6 +52,7 @@ require __DIR__ . '/management-fixture.php';
 require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
 
 function reset_state() {
+    if (function_exists('reset_upload_staging')) { reset_upload_staging(); }
     unset($GLOBALS['g_project_override']);
     $GLOBALS['g_cache_relationships_src'] = array();
     $GLOBALS['g_cache_relationships_dest'] = array();
@@ -132,7 +133,8 @@ function mci_has_readonly_access() {
 }
 function config_get_global($name, $default = null) {
     if ($name === 'core_path') { return getenv('MANTISBT_SOURCE') . '/core/'; }
-    return $name === 'path' ? 'https://central.tauria.ee/mantis/' : $default;
+    return $name === 'path' ? (isset($GLOBALS['test_mantis_session_url'])
+        ? $GLOBALS['test_mantis_session_url'] : 'https://central.tauria.ee/mantis/') : $default;
 }
 function config_get($name, $default = null, $user = null, $project = null) {
     $state = &$GLOBALS['test_mantis'];
@@ -253,7 +255,8 @@ function rest_config_get($request, $response, $path) {
 function rest_issue_get($request, $response, $path) {
     record_call('issues', $request, $path);
     $id = isset($path['id']) ? $path['id'] : 93 + auth_get_current_user_id();
-    if ($id !== 93 + auth_get_current_user_id() && $id !== 96) {
+    if (in_array($id, isset($GLOBALS['test_mantis']['denied_issue_ids']) ? $GLOBALS['test_mantis']['denied_issue_ids'] : array(), true)
+        || ($id !== 93 + auth_get_current_user_id() && $id !== 96)) {
         return $response->withStatus(404);
     }
     return $response->withJson(array('issues' => array(array('id' => $id,

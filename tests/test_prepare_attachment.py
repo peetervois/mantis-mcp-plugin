@@ -19,6 +19,69 @@ ICON = ROOT / "chatgpt/tauria-tasks/assets/IconLDC-bt3.png"
 
 
 class PrepareAttachmentTests(unittest.TestCase):
+    def test_manifest_hashes_large_original_without_an_independent_total_size_cap(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "large.bin"
+            with source.open("wb") as stream:
+                stream.truncate(6 * 1024 * 1024 + 7)
+            result = PREPARE.manifest(source, 123, note_id=456)
+            self.assertEqual(result["size"], source.stat().st_size)
+            self.assertEqual(result["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+            self.assertNotIn("content_base64", result)
+            self.assertEqual(result["note_id"], 456)
+            with self.assertRaises(ValueError):
+                PREPARE.manifest(source, 123, max_bytes=524288)
+
+    def test_chunk_payloads_are_bounded_exact_and_resumable_at_any_valid_offset(self):
+        upload_id = "a" * 64
+        result = PREPARE.chunk(ICON, upload_id, offset=13, length=1024)
+        self.assertEqual(base64.b64decode(result["content_base64"]), ICON.read_bytes()[13:1037])
+        self.assertEqual(result["sha256"], hashlib.sha256(ICON.read_bytes()[13:1037]).hexdigest())
+        for args in ((None, 0, 10), ("../bad", 0, 10), (upload_id, -1, 10), (upload_id, 0, 262145),
+                     (upload_id, ICON.stat().st_size, 10)):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                PREPARE.chunk(ICON, args[0], args[1], args[2])
+
+    @unittest.skipUnless(os.environ.get("MANTISBT_SOURCE"), "Set MANTISBT_SOURCE for streaming PHP contract")
+    def test_chunk_helper_streams_a_real_file_through_native_mcp_and_exact_download(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "chunked.bin"
+            source.write_bytes(bytes(range(256)) * 8193)
+            manifest = PREPARE.manifest(source, 94)
+            process = subprocess.Popen(
+                [os.environ.get("PHP_BINARY", "php"), "-d", "sys_temp_dir=" + folder,
+                 str(ROOT / "tests/import-chunk-upload-fixture.php")],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            def exchange(payload):
+                process.stdin.write(json.dumps(payload) + "\n")
+                process.stdin.flush()
+                line = process.stdout.readline()
+                if not line:
+                    raise AssertionError("PHP streaming fixture failed: " + process.stderr.read())
+                return json.loads(line)
+            try:
+                state = exchange(manifest)
+                offset = 0
+                while offset < manifest["size"]:
+                    payload = PREPARE.chunk(source, state["upload_id"], offset, state["max_chunk_bytes"])
+                    state = exchange(payload)
+                    if offset == 0:
+                        self.assertEqual(exchange(payload)["next_offset"], state["next_offset"])
+                    offset = state["next_offset"]
+                receipt = exchange({"finish": True})
+                self.assertTrue(receipt["round_trip_verified"])
+                self.assertEqual(receipt["size"], manifest["size"])
+                self.assertEqual(receipt["sha256"], manifest["sha256"])
+                process.stdin.close()
+                self.assertEqual(process.wait(timeout=30), 0, process.stderr.read())
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    stream.close()
+
     def test_original_png_and_hash_are_preserved(self):
         result = PREPARE.prepare(ICON, 123)
         self.assertEqual(result["issue_id"], 123)
@@ -57,7 +120,7 @@ class PrepareAttachmentTests(unittest.TestCase):
 
     def test_rejects_invalid_issue_mime_and_limit(self):
         for kwargs in (dict(issue_id=0), dict(issue_id=True), dict(issue_id=123, mime_type="image/png\nBad"),
-                       dict(issue_id=123, max_bytes=1023), dict(issue_id=123, max_bytes=5242881)):
+                       dict(issue_id=123, max_bytes=0), dict(issue_id=123, max_bytes=True)):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 PREPARE.prepare(ICON, **kwargs)
 

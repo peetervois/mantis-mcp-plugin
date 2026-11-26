@@ -22,7 +22,10 @@ there is no inner installer ZIP to extract. Preserve hidden files, including
 MantisBT installation and upgrade in plugin management if offered. Restart the
 PHP handler serving MantisBT (for PHP-FPM, typically `systemctl restart php-fpm`)
 after deployment so OPcache cannot keep old classes. Verify the displayed plugin
-version, then refresh the remote MCP connection's approved tools if needed.
+version and discover the tools through the existing MCP connection. If new
+tools remain absent after a PHP-FPM restart, reapply the plugin installation
+using uninstall/install in MantisBT's plugin manager, then discover them again.
+This does not require a new personal API token.
 Plugin updates do not require a new API token or a separate browser login.
 
 Log in to MantisBT as an administrator, open **Manage → Manage Plugins**, and
@@ -99,9 +102,20 @@ required for this patch.
 
 ## Updating to 0.5.0
 
-Deploy the replacement plugin directory and restart the PHP handler. Refresh
-the existing MCP connection tool list to discover mantis_get_attachment_policy.
+Deploy the replacement plugin directory and follow the tool discovery steps
+above to discover mantis_get_attachment_policy.
 There are eleven read tools and seven optional writes. Use an accessible issue
 to discover the native file-extension policy and separate size limits before
 uploading any file type. The improved source-checkout smoke helper validates
 capabilities and behavior; a different version label alone is not a failure.
+
+## Updating to 0.6.0
+
+Uploads now inherit the native MantisBT limit instead of a fixed MCP ceiling.
+Remove an old explicit `max_upload_bytes` override to inherit it; an existing
+positive override remains an intentional cap. Five new session tools support
+bounded chunks, status, finalization and cancellation. There are twelve reads
+and eleven optional writes. See [chunked uploads](CHUNK-UPLOADS.md) for staging,
+permissions, native size checks and restart/multi-worker requirements. Download
+limits remain separate. Verify exact bytes on a disposable permitted file before
+using the new upload path for real work.

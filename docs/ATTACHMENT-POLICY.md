@@ -20,11 +20,17 @@ in other guides do not imply an image-only restriction.
 - `rules` reports whether both extension settings are known, case handling,
   deny precedence and whether other extensions are allowed. The last value is
   null if either extension setting is unavailable.
-- `limits` reports the bounded plugin decoded upload cap, complete MCP request
-  cap, PHP upload/post byte settings and decoded upload upper bound. The upper
-  bound uses the same calculation as the uploader and is null if the native
-  maximum is unavailable. JSON/base64/request and other server/client limits
-  remain additional constraints.
+- `limits.plugin_upload_bytes` reports the inherited native size or explicit
+  MCP cap. With inheritance and an unavailable native setting, it is null.
+- `limits.upload_limit_source` is `mantis` by default, or `explicit` when an
+  administrator configured a positive MCP cap. `configured_upload_bytes` is
+  null for inheritance, otherwise that explicit cap.
+- `limits.mcp_request_bytes` bounds each HTTP request; `upload_chunk_bytes`
+  bounds one decoded chunk. Neither is a total assembled-file limit.
+- PHP upload/post byte settings and `decoded_upload_upper_bound_bytes` use
+  the same native limits as the uploader. The upper bound is null when the
+  native maximum is unavailable. Native MantisBT checks these PHP settings on
+  the assembled file too. Other server/client/storage limits still apply.
 
 Native semantics are preserved: `disallowed_files` takes precedence over
 `allowed_files`, with case-insensitive extension comparison. An explicitly
@@ -55,10 +61,9 @@ Python tests prepare real ZIP, log and binary files and verify exact native
 upload/download bytes and hashes. This local coverage does not establish the
 values configured on a live installation.
 
-Deploy the new plugin directory, restart the PHP handler, and refresh the
-existing connection's approved tool list. Discover policy for a known accessible
-issue before a live upload. There are eleven read tools and seven optional
-write tools. Verify a permitted original non-image attachment and exact MCP
+Deploy the new plugin directory and follow the [update steps](INSTALL.md).
+Discover policy for a known accessible issue before a live upload. There are
+twelve read tools and eleven optional write tools. Verify a permitted original non-image attachment and exact MCP
 download; only dispose of data created for the authorized test. The smoke helper
 discovers and checks this read tool automatically when present, while still
 checking older servers without it by their actual supported capabilities.

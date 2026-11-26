@@ -9,6 +9,7 @@ require_once __DIR__ . '/core/AttachmentDownload.php';
 require_once __DIR__ . '/core/ProjectContext.php';
 require_once __DIR__ . '/core/AttachmentUpload.php';
 require_once __DIR__ . '/core/AttachmentPolicy.php';
+require_once __DIR__ . '/core/UploadSessions.php';
 require_once __DIR__ . '/core/Relationships.php';
 require_once __DIR__ . '/core/Workflow.php';
 require_once __DIR__ . '/core/AttachmentDelete.php';

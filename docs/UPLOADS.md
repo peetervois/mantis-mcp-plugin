@@ -94,25 +94,34 @@ Use [attachment policy discovery](ATTACHMENT-POLICY.md) before preparing any
 file type. It reports native extension settings and the separate size limits
 in the issue's project context, without treating unknown settings as unrestricted.
 
-The decoded upload default is **512 KiB**; the hard maximum is **5 MiB**. Empty
-files are rejected, matching native MantisBT behavior. Filenames are limited to
+From version 0.6.0, uploads inherit the issue project's native MantisBT
+`max_file_size` by default. There is no additional fixed MCP total-file ceiling.
+Use [chunked uploads](CHUNK-UPLOADS.md) when the original file does not fit one
+request. Empty files are rejected, matching native MantisBT behavior. Filenames are limited to
 250 UTF-8 bytes and cannot contain directory separators, colons or controls.
 MantisBT's allowed/disallowed file extensions are also enforced.
 
-For larger files, adjust both plugin limits inside the existing PHP block in
-`config/config_inc.php`, for example:
+Remove an old explicit `max_upload_bytes` override to inherit MantisBT, or set
+it to `false`. The default uses `false` because a null global default triggers
+missing-configuration warnings in native MantisBT. An optional positive integer
+can deliberately impose a separate MCP cap inside `config/config_inc.php`:
 
 ```php
-$g_plugin_MantisMcp_max_upload_bytes = 5242880;
-$g_plugin_MantisMcp_max_request_bytes = 8388608;
+$g_plugin_MantisMcp_max_upload_bytes = 8388608; // Optional explicit 8 MiB cap.
 ```
 
-Base64 is about one third larger than the original bytes, and the JSON envelope
-also needs room. The HTTP request default remains 1 MiB. PHP
-`upload_max_filesize`, `post_max_size`, MantisBT `max_file_size`, web-server and
-client limits can impose a lower bound. Raising the plugin limits does not
-override those settings. Use `--max-bytes 5242880` with the preparation helper
-only after configuring a compatible server/client request limit.
+For inline uploads, base64 and the JSON envelope must fit the HTTP request
+budget (default 1 MiB). Chunked uploads use bounded requests and assemble one
+file, without applying that request budget to its total size. Native MantisBT
+also checks PHP `upload_max_filesize` and `post_max_size` against the completed
+file, so those settings can lower the native accepted maximum. Native limits,
+web-server/client limits, disk capacity and PHP memory remain authoritative.
+Download limits are separate and unchanged; accepting a larger upload does not
+automatically make a complete MCP download available under its configured cap.
+
+The preparation helper has no default total-file cap. Use `--max-bytes` only
+when an explicit local cap is desired. The inline mode encodes the complete
+file; `--manifest` and `--upload-id` prepare metadata and bounded chunks instead.
 
 ## Native upload implementation and failure handling
 
@@ -131,7 +140,7 @@ new file belonging to this issue and token owner, and checks its original bytes
 before returning a compact receipt. It never accepts a caller-selected server
 path or uses a separate network connection.
 
-Uploads are **not idempotent**. Native MantisBT renames duplicate filenames,
+Inline uploads are **not idempotent**. Native MantisBT renames duplicate filenames,
 for example `screenshot-2.png`; the receipt returns the actual filename. After a
 timeout or uncertain result, read the issue and inspect attachment metadata
 before deciding whether to retry. There is no automatic retry or claim of an
@@ -140,15 +149,14 @@ step or verification failed.
 
 ## Deploy and verify
 
-Replace the installed `plugins/MantisMcp` directory with the 0.3.0 package.
-Upgrade the plugin in MantisBT management if offered. Refresh the existing
-Tauria Tasks remote connection's approved tools and confirm
-`mantis_upload_attachment` appears. Retain its existing personal API-token
-authentication; no browser sign-in or additional credential is needed.
+Replace the installed `plugins/MantisMcp` directory with the current package
+and restart the PHP handler. Use MantisBT plugin management to apply the
+update; see [installation](INSTALL.md) for tool discovery. Confirm the five
+session tools from the chunked upload guide appear. Retain the existing
+personal API-token authentication.
 
 In a fresh discussion, supply a harmless PNG and explicitly request an upload
 to a permitted test issue. Compare the receipt and issue metadata with the
 original filename, size and SHA-256. Download the new attachment and compare its
 original bytes. Test an account without issue/upload access and write tools
-disabled. Live production upload remains pending deployment and client tool
-refresh; local integration tests are not a production verification.
+disabled. Local integration tests are separate from production verification.

@@ -38,15 +38,21 @@ final class AttachmentPolicy {
             'rules' => (object) array('extension_policy_known' => $known,
                 'extension_case_sensitive' => false, 'disallowed_takes_precedence' => true,
                 'allow_other_extensions' => $known ? is_blank($policy['allowed_files']['value']) : null),
-            'limits' => (object) array('plugin_upload_bytes' => AttachmentUpload::limit($uploadBytes),
+            'limits' => (object) array('plugin_upload_bytes' => AttachmentUpload::limit($uploadBytes, $max),
+                'upload_limit_source' => AttachmentUpload::inherits($uploadBytes) ? 'mantis' : 'explicit',
+                'configured_upload_bytes' => AttachmentUpload::inherits($uploadBytes) ? null : AttachmentUpload::limit($uploadBytes),
                 'mcp_request_bytes' => Http::requestLimit($requestBytes),
+                'upload_chunk_bytes' => UploadSessions::chunkLimit($requestBytes),
                 'php_upload_max_filesize_bytes' => (int) ini_get_number('upload_max_filesize'),
                 'php_post_max_size_bytes' => (int) ini_get_number('post_max_size'),
                 'decoded_upload_upper_bound_bytes' => $max === null ? null : AttachmentUpload::effectiveLimit($uploadBytes, $max),
                 'request_envelope_and_other_limits_apply' => true),
             'checks' => 'Upload filename-extension policy, not a MIME allowlist. Missing, private or invalid settings '
                 . 'are unavailable, not unrestricted. Native upload checks remain authoritative. '
-                . 'Base64 and JSON must also fit the complete request limit; web-server/client limits may be lower. '
+                . 'The assembled size follows MantisBT unless an explicit MCP cap is configured. Use chunked upload '
+                . 'above the inline request budget. MCP request/chunk bounds are not assembled-file caps. '
+                . 'Native MantisBT finalization still applies its PHP upload/post size checks to the completed file. '
+                . 'Web-server/client/storage resources may impose other constraints. '
                 . 'Upload extension rules do not prohibit downloading an existing visible attachment.');
     }
 
