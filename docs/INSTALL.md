@@ -12,7 +12,7 @@ For an installation at `/var/www/html/mantis`, the entry point must be:
 /var/www/html/mantis/plugins/MantisMcp/MantisMcp.php
 ```
 
-Alternatively, extract `MantisMcp-0.4.1.zip` into `plugins/`. Build the package on
+Alternatively, extract `MantisMcp-0.5.0.zip` into `plugins/`. Build the package on
 a development machine using `python3 scripts/package.py`, or download it from
 the GitHub Actions artifacts for the branch being tested.
 
@@ -96,3 +96,12 @@ relationship deletion. On 0.4.0, these writes can already have completed despite
 the error. Read the issue and current relationships before retrying. Replace the
 plugin with 0.4.1 and restart the PHP handler; no new token or schema change is
 required for this patch.
+
+## Updating to 0.5.0
+
+Deploy the replacement plugin directory and restart the PHP handler. Refresh
+the existing MCP connection tool list to discover mantis_get_attachment_policy.
+There are eleven read tools and seven optional writes. Use an accessible issue
+to discover the native file-extension policy and separate size limits before
+uploading any file type. The improved source-checkout smoke helper validates
+capabilities and behavior; a different version label alone is not a failure.

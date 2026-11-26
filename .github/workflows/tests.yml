@@ -50,7 +50,7 @@ jobs:
         if: matrix.php == '8.3' && matrix.mantis == '2.29.0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: MantisMcp-0.4.1
+          name: MantisMcp-0.5.0
           path: dist/install/
           include-hidden-files: true
           if-no-files-found: error
