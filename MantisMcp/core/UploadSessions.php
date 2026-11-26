@@ -5,7 +5,7 @@ namespace Tauria\MantisMcp;
 /** Private per-owner staging; only finalization can create a Mantis attachment. */
 final class UploadSessions {
     const CHUNK_BYTES = 262144;
-    const IDLE_SECONDS = 3600;
+    const IDLE_SECONDS = 86400;
     const MAX_STATE_BYTES = 2097152;
 
     public static function chunkLimit($requestBytes) {
@@ -36,7 +36,10 @@ final class UploadSessions {
             if (!flock($lock, LOCK_EX | LOCK_NB)) { throw new ToolFailure('Upload session is busy; inspect its status before retrying.'); }
             $state = self::load($base);
             if ($state['owner_id'] !== (int) auth_get_current_user_id()) { throw new ToolFailure('Upload session is unavailable.'); }
-            if ($state['expires_at'] < time()) { throw new ToolFailure('Upload session expired. Read the issue before starting another upload.'); }
+            if ($state['expires_at'] <= time()) {
+                self::discard($base);
+                throw new ToolFailure('Upload session expired. Read the issue before starting another upload.');
+            }
             call_user_func($readIssue, $state['issue_id']);
             return ProjectContext::run($state['issue_id'], function() use ($name, $args, $uploadLimit, $requestLimit, $base, &$state) {
                 if ($name === 'mantis_get_attachment_upload') { return self::status($state, $base, $requestLimit); }
@@ -71,8 +74,12 @@ final class UploadSessions {
         } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
+    private static function directory() {
+        return sys_get_temp_dir() . '/.mantis-mcp-uploads-' . substr(hash('sha256', config_get_global('path')), 0, 20);
+    }
+
     private static function root($create) {
-        $root = sys_get_temp_dir() . '/.mantis-mcp-uploads-' . substr(hash('sha256', config_get_global('path')), 0, 20);
+        $root = self::directory();
         if (!file_exists($root) && $create && !@mkdir($root, 0700) && !is_dir($root)) {
             throw new ToolFailure('Could not create private upload staging.');
         }
@@ -84,7 +91,7 @@ final class UploadSessions {
 
     private static function begin(array $args, $requestLimit) {
         $root = self::root(true);
-        self::collect($root);
+        self::collectExpired();
         if (self::chunkLimit($requestLimit) < 1) { throw new ToolFailure('Request limit is too small for an upload chunk.'); }
         $id = bin2hex(random_bytes(32));
         $base = $root . '/' . $id;
@@ -240,25 +247,57 @@ final class UploadSessions {
         if (is_file($base . '.data') && !unlink($base . '.data')) { throw new ToolFailure('Could not clean up staged upload data.'); }
     }
 
-    private static function collect($root) {
+    /** Internal maintenance entry point; no MCP tool accepts cleanup paths. */
+    public static function collectExpired() {
+        $result = array('expired_sessions' => 0, 'orphan_files' => 0, 'busy_sessions' => 0, 'failed' => 0);
+        if (!file_exists(self::directory()) && !is_link(self::directory())) { return $result; }
+        $root = self::root(false);
+        $path = $root . '/.gc.lock';
+        if (is_link($path)) { throw new ToolFailure('Upload maintenance is unavailable.'); }
+        $gate = @fopen($path, 'c+b');
+        if ($gate === false) { throw new ToolFailure('Upload maintenance is unavailable.'); }
+        try {
+            if (!chmod($path, 0600)) { throw new ToolFailure('Could not secure upload maintenance.'); }
+            if (!flock($gate, LOCK_EX | LOCK_NB)) { return $result; }
+            return self::collect($root, $result);
+        } finally { flock($gate, LOCK_UN); fclose($gate); }
+    }
+
+    private static function discard($base) {
+        self::removeData($base); // Keep metadata/lock for a retry if data cleanup fails.
+        foreach (array('.json', '.lock') as $suffix) {
+            $path = $base . $suffix;
+            if (is_link($path) || (is_file($path) && !unlink($path))) {
+                throw new ToolFailure('Could not remove expired upload metadata.');
+            }
+        }
+    }
+
+    private static function collect($root, array $result) {
         $scanned = 0;
         foreach (new \DirectoryIterator($root) as $file) {
             if ($file->isLink() || !$file->isFile() || $file->getMTime() + self::IDLE_SECONDS >= time()) { continue; }
             $name = $file->getFilename();
-            if (strpos($name, '.state-') === 0) { if (++$scanned > 100) { break; } @unlink($file->getPathname()); continue; }
+            if (strpos($name, '.state-') === 0
+                || (preg_match('/\A([a-f0-9]{64})\.(data|json)\z/', $name, $orphan)
+                    && !file_exists($root . '/' . $orphan[1] . '.lock') && !is_link($root . '/' . $orphan[1] . '.lock'))) {
+                if (++$scanned > 100) { break; }
+                if (@unlink($file->getPathname())) { ++$result['orphan_files']; } else { ++$result['failed']; }
+                continue;
+            }
             if (!preg_match('/\A([a-f0-9]{64})\.lock\z/', $name, $match)) { continue; }
             if (++$scanned > 100) { break; }
             $base = $root . '/' . $match[1];
             $lock = @fopen($base . '.lock', 'r+b');
             if ($lock === false) { continue; }
             try {
-                if (!flock($lock, LOCK_EX | LOCK_NB)) { continue; }
-                try { $state = self::load($base); if ($state['expires_at'] >= time()) { continue; } }
+                if (!flock($lock, LOCK_EX | LOCK_NB)) { ++$result['busy_sessions']; continue; }
+                try { $state = self::load($base); if ($state['expires_at'] > time()) { continue; } }
                 catch (\Throwable $ignored) { /* old incomplete metadata is disposable */ }
-                foreach (array('.data', '.json', '.lock') as $suffix) {
-                    if (!is_link($base . $suffix) && is_file($base . $suffix)) { @unlink($base . $suffix); }
-                }
+                try { self::discard($base); ++$result['expired_sessions']; }
+                catch (\Throwable $ignored) { ++$result['failed']; }
             } finally { flock($lock, LOCK_UN); fclose($lock); }
         }
+        return $result;
     }
 }

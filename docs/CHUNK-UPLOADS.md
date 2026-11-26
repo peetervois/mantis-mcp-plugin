@@ -91,11 +91,14 @@ are checked against the original whole-file SHA-256 before native storage.
 Metadata includes note text until finalization/cancellation, so protect the
 temporary filesystem like the other application data.
 
-Sessions expire one hour after creation or the last successful chunk append.
+Sessions expire one day after creation or the last successful chunk append.
 Polling alone does not extend them. Completed receipts and cancelled tombstones
-are retained for one hour for safe retries. A new begin opportunistically
-collects up to 100 old staging candidates. With no new begins, expired files
-may remain until the system temporary-file cleanup or an operator removes them.
+are retained for one day for safe retries. A new begin opportunistically
+collects up to 100 old staging candidates. An expired session cannot resume.
+Authenticated MCP interactions also check for expired staging, including reads.
+Cleanup is deliberately lazy: without later traffic, expired staging can remain
+on disk. No cron job or separate background service is needed. See
+[session lifecycle](SESSION-LIFECYCLE.md) for timeout and concurrency checks.
 Never remove active staging during deployment. All PHP workers serving one
 installation need the same private writable temporary directory and reliable
 filesystem locks/atomic rename; independent hosts need shared compatible

@@ -3,7 +3,6 @@
 use Tauria\MantisMcp\UploadSessions;
 
 // Never share test staging with a real installation or another test process.
-$GLOBALS['test_mantis_session_url'] = 'https://session-fixture.invalid/' . bin2hex(random_bytes(12)) . '/';
 load_native_function(getenv('MANTISBT_SOURCE') . '/core/config_api.php', 'config_get_global', 'native_upload_config_default');
 function config_eval($value, $global = false) { return $value; }
 function session_root() {
@@ -248,7 +247,7 @@ test_case('expired staging is denied and collected while symlink data cannot be 
     $state = json_decode(file_get_contents($base . '.json'), true);
     $state['expires_at'] = time() - 1;
     file_put_contents($base . '.json', json_encode($state));
-    touch($base . '.lock', time() - 7200);
+    touch($base . '.lock', time() - 2 * UploadSessions::IDLE_SECONDS);
     same(true, session_call('get', $id)->result->isError);
     $next = session_begin('new bytes')->result->structuredContent->upload_id;
     check(!is_file($base . '.data')); check(!is_file($base . '.json'));
@@ -270,4 +269,44 @@ test_case('session schemas reject arbitrary paths, impersonation, note conflicts
     }
     same(-32602, session_call('get', '../other')->error->code);
     same(300, $GLOBALS['test_mantis']['last_file_id']);
+});
+
+test_case('ordinary authenticated reads reclaim partial uploads after one idle day', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $id = session_begin('abandoned bytes')->result->structuredContent->upload_id;
+    same(false, session_chunk($id, 0, 'abandoned')->result->isError);
+    $base = session_root() . '/' . $id;
+    $state = json_decode(file_get_contents($base . '.json'), true);
+    $state['expires_at'] = time() - 10;
+    file_put_contents($base . '.json', json_encode($state));
+    touch($base . '.lock', time() - 2 * UploadSessions::IDLE_SECONDS);
+    $GLOBALS['test_mantis']['writes'] = false;
+    same(false, management_call('mantis_get_current_user')->result->isError);
+    foreach (array('.lock', '.json', '.data') as $suffix) { check(!file_exists($base . $suffix)); }
+    same(true, session_call('get', $id)->result->isError);
+    same(300, $GLOBALS['test_mantis']['last_file_id']);
+});
+
+test_case('maintenance skips locked sessions and active uploads while reclaiming old orphan files', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $id = session_begin('active bytes')->result->structuredContent->upload_id;
+    $base = session_root() . '/' . $id;
+    $state = json_decode(file_get_contents($base . '.json'), true);
+    $state['expires_at'] = time() - 10;
+    file_put_contents($base . '.json', json_encode($state)); touch($base . '.lock', time() - 2 * UploadSessions::IDLE_SECONDS);
+    $lock = fopen($base . '.lock', 'r+b');
+    try {
+        check(flock($lock, LOCK_EX | LOCK_NB));
+        $sweep = UploadSessions::collectExpired();
+        same(1, $sweep['busy_sessions']); same(0, $sweep['expired_sessions']);
+        check(is_file($base . '.data'));
+    } finally { flock($lock, LOCK_UN); fclose($lock); }
+    same(1, UploadSessions::collectExpired()['expired_sessions']);
+    $active = session_begin('still active')->result->structuredContent->upload_id;
+    $old = session_root() . '/' . str_repeat('b', 64) . '.data';
+    file_put_contents($old, 'orphan'); touch($old, time() - 2 * UploadSessions::IDLE_SECONDS);
+    $sweep = UploadSessions::collectExpired();
+    same(1, $sweep['orphan_files']); check(!is_file($old));
+    check(is_file(session_root() . '/' . $active . '.data'));
+    same(false, session_chunk($active, 0, 'still active')->result->isError);
 });

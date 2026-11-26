@@ -109,6 +109,11 @@ final class Http {
             return $this->failure($response, 400, 'Unsupported MCP-Protocol-Version.');
         }
 
+        // Ordinary authenticated traffic also reclaims abandoned staging.
+        try {
+            $cleanup = UploadSessions::collectExpired();
+            if ($cleanup['failed'] > 0) { error_log('MantisMcp: some expired upload files could not be removed.'); }
+        } catch (\Throwable $error) { error_log('MantisMcp: expired upload cleanup failed.'); }
         $protocol = new Protocol(new Tools($this->enableWrites), $execute);
         $reply = $protocol->handle($message);
         if ($reply === null) {

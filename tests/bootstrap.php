@@ -50,6 +50,7 @@ require $mantis . '/core/file_api.php';
 require __DIR__ . '/upload-storage.php';
 require __DIR__ . '/management-fixture.php';
 require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
+$GLOBALS['test_mantis_session_url'] = 'https://session-fixture.invalid/' . bin2hex(random_bytes(12)) . '/';
 
 function reset_state() {
     if (function_exists('reset_upload_staging')) { reset_upload_staging(); }

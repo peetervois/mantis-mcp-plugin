@@ -132,12 +132,13 @@ test_case('rejects mismatched token owner and authenticated account', function()
 });
 
 test_case('validates Origin against the configured MantisBT URL', function() {
-    foreach (array('https://attacker.example', 'null', '', 'https://central.tauria.ee/path',
-        'http://central.tauria.ee') as $origin) {
+    $host = parse_url(config_get_global('path'), PHP_URL_HOST);
+    foreach (array('https://attacker.example', 'null', '', 'https://' . $host . '/path',
+        'http://' . $host) as $origin) {
         same(403, send_request(rpc('tools/list'), 'alice-key',
             array('headers' => array('Origin' => $origin)))->getStatusCode());
     }
-    foreach (array('https://central.tauria.ee', 'https://central.tauria.ee:443') as $origin) {
+    foreach (array('https://' . $host, 'https://' . $host . ':443') as $origin) {
         same(200, send_request(rpc('tools/list'), 'alice-key',
             array('headers' => array('Origin' => $origin)))->getStatusCode());
     }
