@@ -12,7 +12,7 @@ For an installation at `/var/www/html/mantis`, the entry point must be:
 /var/www/html/mantis/plugins/MantisMcp/MantisMcp.php
 ```
 
-Alternatively, extract `MantisMcp-0.7.0.zip` into `plugins/`. Build the package on
+Alternatively, extract `MantisMcp-0.7.1.zip` into `plugins/`. Build the package on
 a development machine using `python3 scripts/package.py`, or download it from
 the GitHub Actions artifacts for the branch being tested.
 
@@ -136,3 +136,11 @@ positive override remains enforced. Chunk size and permissions are unchanged.
 The client assembly helper supports streaming JSON Lines with no total cap.
 Deploy the replacement directory and restart the PHP handler as above; no new
 tool names or token are needed. Verify a large exact download after deployment.
+
+## Updating to 0.7.1
+
+Replace the plugin directory and reload PHP-FPM if the installation uses
+OPcache. The existing personal tokens and ChatGPT connection work with this
+release. Run the [read-only deployment checks](SMOKE.md) against the public
+MCP URL to verify that an unauthenticated client receives an empty denial
+through the web server and any reverse proxy.
