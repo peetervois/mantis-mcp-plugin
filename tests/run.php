@@ -333,6 +333,7 @@ require __DIR__ . '/relationships.php';
 require __DIR__ . '/workflow.php';
 require __DIR__ . '/attachment-delete.php';
 require __DIR__ . '/note-attachments.php';
+require __DIR__ . '/smoke-checks.php';
 
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

@@ -145,12 +145,14 @@ export MANTIS_MCP_URL=https://mantis.example.com/api/rest/plugins/MantisMcp/mcp
 php tests/smoke.php
 ```
 
-The smoke test only initializes the connection, lists tools, reads the token owner
-and checks unauthenticated/invalid-token failures. It does not create or change
-MantisBT records. To check a second account, repeat it with that account's token.
-Optionally set `MANTIS_MCP_EXPECTED_USER_ID` to check the token owner, and
-`MANTIS_MCP_HIDDEN_ISSUE_ID` to verify rejection of an issue that account must
-not be able to read. Unset `MANTIS_API_TOKEN` after testing.
+The smoke test checks tool names/schemas, identity, authentication and read
+behavior. Its reported server version is informational; actual capabilities
+determine compatibility. Set `MANTIS_MCP_ISSUE_ID` for workflow and relationship
+checks, and `MANTIS_MCP_HIDDEN_ISSUE_ID` for explicit permission checks. A second
+account is supported independently. Optional groups not supplied are reported
+as skipped. No discovered write tool is invoked. See [smoke checks](docs/SMOKE.md)
+for exact commands, inventory expectations and the limits of local versus live
+verification. Unset `MANTIS_API_TOKEN` after testing.
 
 ## Development and checks
 

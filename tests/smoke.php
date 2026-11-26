@@ -1,98 +1,90 @@
 <?php
 /**
- * Read-only live installation check. Credentials are supplied only through env.
+ * Read-only installation checks. Credentials are accepted only through env.
  * SPDX-License-Identifier: BSD-3-Clause
- * Copyright (c) 2026, Peeter Vois
  */
+require __DIR__ . '/smoke-lib.php';
+use Tauria\MantisMcp\Smoke\Checks;
 
-$url = getenv('MANTIS_MCP_URL');
-$token = getenv('MANTIS_API_TOKEN');
-$parts = $url ? parse_url($url) : false;
-if (!$parts || !isset($parts['scheme'], $parts['host'])
-    || isset($parts['user']) || isset($parts['pass']) || isset($parts['query'])
-    || isset($parts['fragment'])
-    || ($parts['scheme'] !== 'https'
-        && !($parts['scheme'] === 'http'
-            && in_array($parts['host'], array('localhost', '127.0.0.1', '[::1]'), true)))
-    || !$token || preg_match('/[\r\n]/', $token)) {
-    fwrite(STDERR, "Set MANTIS_MCP_URL to an HTTPS MCP endpoint and MANTIS_API_TOKEN to a personal token.\n");
-    exit(1);
-}
-
-function request_mcp($url, $token, $method, $params) {
-    static $id = 0;
-    $headers = array('Content-Type: application/json', 'Accept: application/json, text/event-stream');
-    if ($token !== null) {
-        $headers[] = 'Authorization: Bearer ' . $token;
-    }
-    $context = stream_context_create(array(
-        'http' => array(
-            'method' => 'POST',
-            'header' => implode("\r\n", $headers),
-            'content' => json_encode(array('jsonrpc' => '2.0', 'id' => ++$id,
-                'method' => $method, 'params' => $params)),
-            'ignore_errors' => true, 'follow_location' => 0,
-            'max_redirects' => 0, 'timeout' => 20,
-        ),
-        'ssl' => array('verify_peer' => true, 'verify_peer_name' => true),
-    ));
-    $body = @file_get_contents($url, false, $context);
-    if ($body === false || !isset($http_response_header[0])
-        || !preg_match('~^HTTP/\S+ ([0-9]{3})~', $http_response_header[0], $match)) {
-        throw new RuntimeException('The endpoint could not be reached; no credentials were printed.');
-    }
-    return array((int) $match[1], json_decode($body));
-}
-
-function require_rpc_success($response, $label) {
-    if ($response[0] !== 200 || !$response[1] instanceof stdClass
-        || isset($response[1]->error) || !isset($response[1]->result)) {
-        throw new RuntimeException($label . ' failed (HTTP ' . $response[0] . ').');
-    }
-    return $response[1]->result;
-}
-
-try {
-    foreach (array(null, 'not-a-valid-mantis-api-token') as $invalid) {
-        $response = request_mcp($url, $invalid, 'tools/list', new stdClass());
-        if ($response[0] !== 401) {
-            throw new RuntimeException('Missing/invalid-token rejection failed (expected HTTP 401).');
+function smoke_options($prefix) {
+    $result = array();
+    foreach (array('EXPECTED_USER_ID' => 'expected_user_id', 'ISSUE_ID' => 'issue_id',
+        'HIDDEN_ISSUE_ID' => 'hidden_issue_id', 'MAX_PEERS' => 'max_peers') as $env => $key) {
+        $v = getenv($prefix . $env);
+        if ($v !== false && $v !== '') {
+            Checks::ensure(preg_match('/\A[1-9][0-9]*\z/', $v) && (string) (int) $v === $v, 'Positive integer environment option');
+            $result[$key] = (int) $v;
         }
     }
-    echo "PASS missing and invalid tokens are rejected\n";
-    require_rpc_success(request_mcp($url, $token, 'initialize', (object) array(
-        'protocolVersion' => '2025-06-18', 'capabilities' => new stdClass(),
-        'clientInfo' => (object) array('name' => 'mantis-mcp-smoke', 'version' => '0.1.0'))),
-        'Initialize');
-    echo "PASS initialize\n";
-    $tools = require_rpc_success(request_mcp($url, $token, 'tools/list', new stdClass()), 'Tool discovery');
-    if (!isset($tools->tools) || !is_array($tools->tools)) {
-        throw new RuntimeException('Tool discovery returned an unexpected result.');
-    }
-    echo "PASS tool discovery (" . count($tools->tools) . " tools)\n";
-    $identity = require_rpc_success(request_mcp($url, $token, 'tools/call', (object) array(
-        'name' => 'mantis_get_current_user', 'arguments' => new stdClass())), 'Current account');
-    if (!empty($identity->isError) || !isset($identity->structuredContent->id)) {
-        throw new RuntimeException('Current-account lookup failed.');
-    }
-    $expected = getenv('MANTIS_MCP_EXPECTED_USER_ID');
-    if ($expected !== false && $expected !== ''
-        && (int) $identity->structuredContent->id !== (int) $expected) {
-        throw new RuntimeException('The API-token owner differs from the expected account.');
-    }
-    echo "PASS authenticated account id " . (int) $identity->structuredContent->id . "\n";
-    $hidden = getenv('MANTIS_MCP_HIDDEN_ISSUE_ID');
-    if ($hidden !== false && $hidden !== '') {
-        $result = require_rpc_success(request_mcp($url, $token, 'tools/call', (object) array(
-            'name' => 'mantis_get_issue', 'arguments' => (object) array('issue_id' => (int) $hidden))),
-            'Inaccessible issue check');
-        if (empty($result->isError)) {
-            throw new RuntimeException('The issue expected to be inaccessible was returned.');
+    Checks::ensure(!isset($result['max_peers']) || $result['max_peers'] <= 100, 'Peer-check limit (maximum 100)');
+    Checks::ensure(!isset($result['issue_id'], $result['hidden_issue_id'])
+        || $result['issue_id'] !== $result['hidden_issue_id'], 'Distinct accessible/inaccessible issue ids');
+    $mode = getenv($prefix . 'WRITES');
+    $result['writes'] = $mode === false || $mode === '' ? 'auto' : $mode;
+    Checks::ensure(in_array($result['writes'], array('auto', 'required', 'disabled'), true), 'Write inventory option');
+    return $result;
+}
+
+function smoke_transport($url, array $credentials) {
+    $id = 0;
+    $versions = array();
+    return function($role, $method, $params) use ($url, $credentials, &$id, &$versions) {
+        $notification = strpos($method, 'notifications/') === 0;
+        $message = array('jsonrpc' => '2.0', 'method' => $method, 'params' => $params);
+        if (!$notification) { $message['id'] = ++$id; }
+        $headers = array('Content-Type: application/json', 'Accept: application/json');
+        if ($credentials[$role] !== null) { $headers[] = 'Authorization: Bearer ' . $credentials[$role]; }
+        if (isset($versions[$role])) { $headers[] = 'MCP-Protocol-Version: ' . $versions[$role]; }
+        $context = stream_context_create(array('http' => array('method' => 'POST',
+            'header' => implode("\r\n", $headers), 'content' => json_encode($message),
+            'ignore_errors' => true, 'follow_location' => 0, 'max_redirects' => 0, 'timeout' => 20),
+            'ssl' => array('verify_peer' => true, 'verify_peer_name' => true)));
+        $stream = @fopen($url, 'rb', false, $context);
+        Checks::ensure($stream !== false && isset($http_response_header[0])
+            && preg_match('~^HTTP/\S+ ([0-9]{3})~', $http_response_header[0], $match), 'Endpoint reachability');
+        try { $body = stream_get_contents($stream, 2097153); }
+        finally { fclose($stream); }
+        Checks::ensure(is_string($body) && strlen($body) <= 2097152, 'Bounded response body');
+        $status = (int) $match[1];
+        $data = json_decode($body);
+        if ($status === 200) {
+            Checks::ensure($data instanceof stdClass && isset($data->jsonrpc, $data->id)
+                && $data->jsonrpc === '2.0' && !$notification && $data->id === $id, 'JSON-RPC response correlation');
+            if ($method === 'initialize' && isset($data->result->protocolVersion)
+                && in_array($data->result->protocolVersion, array('2025-03-26', '2025-06-18', '2025-11-25'), true)) {
+                $versions[$role] = $data->result->protocolVersion;
+            }
         }
-        echo "PASS expected inaccessible issue is rejected\n";
+        return array($status, $data);
+    };
+}
+
+function smoke_main() {
+    $url = getenv('MANTIS_MCP_URL');
+    $parts = $url ? parse_url($url) : false;
+    Checks::ensure($parts && isset($parts['scheme'], $parts['host'])
+        && !isset($parts['user']) && !isset($parts['pass']) && !isset($parts['query']) && !isset($parts['fragment'])
+        && ($parts['scheme'] === 'https' || ($parts['scheme'] === 'http'
+            && in_array($parts['host'], array('localhost', '127.0.0.1', '[::1]'), true))), 'HTTPS MCP URL (or loopback HTTP)');
+    $primary = getenv('MANTIS_API_TOKEN');
+    $secondary = getenv('MANTIS_API_TOKEN_SECOND');
+    foreach (array($primary, $secondary) as $i => $token) {
+        if ($i === 1 && ($token === false || $token === '')) { continue; }
+        Checks::ensure(is_string($token) && $token !== '' && strlen($token) <= 1024
+            && !preg_match('/[\s,]/', $token), 'Personal API token environment value');
     }
-    echo "Read-only smoke checks passed.\n";
-} catch (Throwable $error) {
-    fwrite(STDERR, "FAIL " . $error->getMessage() . "\n");
-    exit(1);
+    $options = smoke_options('MANTIS_MCP_');
+    $options['secondary'] = $secondary !== false && $secondary !== '';
+    if ($options['secondary']) { $options['secondary_options'] = smoke_options('MANTIS_MCP_SECOND_'); }
+    $request = smoke_transport($url, array('primary' => $primary, 'secondary' => $secondary,
+        'missing' => null, 'invalid' => 'not-a-valid-mantis-api-token'));
+    (new Checks($request, function($line) { echo $line . "\n"; }))->run($options);
+}
+
+if (realpath(isset($_SERVER['SCRIPT_FILENAME']) ? $_SERVER['SCRIPT_FILENAME'] : '') === __FILE__) {
+    try { smoke_main(); }
+    catch (Throwable $error) {
+        fwrite(STDERR, 'FAIL ' . ($error instanceof RuntimeException ? $error->getMessage() : 'Unexpected local check failure.') . "\n");
+        exit(1);
+    }
 }

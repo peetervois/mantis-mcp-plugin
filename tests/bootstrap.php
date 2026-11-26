@@ -250,7 +250,8 @@ function rest_issue_get($request, $response, $path) {
         return $response->withStatus(404);
     }
     return $response->withJson(array('issues' => array(array('id' => $id,
-        'summary' => 'Visible to ' . user_get_username(auth_get_current_user_id())))));
+        'summary' => 'Visible to ' . user_get_username(auth_get_current_user_id()),
+        'project' => array('id' => 1), 'status' => array('id' => 60), 'updated_at' => '2026-01-01T00:00:00Z'))));
 }
 function rest_issue_files_get($request, $response, $path) {
     record_call('files', $request, $path);
