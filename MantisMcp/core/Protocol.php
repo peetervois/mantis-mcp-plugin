@@ -73,6 +73,7 @@ final class Protocol {
                             . 'inspect relevant screenshots when analyzing issues. Before creating or changing '
                             . 'issues, discover project categories and enum values with the read tools. '
                             . 'Inspect mantis_get_workflow before changing status and discover relationship types before linking issues. '
+                            . 'Read mantis_get_attachment_policy before uploading any file type; native file and size rules apply. '
                             . 'Only perform writes requested by the user. Never ask for API tokens in chat.',
                     );
                     break;

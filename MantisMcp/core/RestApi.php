@@ -16,14 +16,16 @@ final class RestApi {
     private $handlers;
     private $maxDownloadBytes;
     private $maxUploadBytes;
+    private $maxRequestBytes;
 
     public function __construct($request, ?callable $responseFactory = null, array $handlers = array(),
         $maxDownloadBytes = AttachmentDownload::DEFAULT_MAX_BYTES,
-        $maxUploadBytes = AttachmentUpload::DEFAULT_MAX_BYTES) {
+        $maxUploadBytes = AttachmentUpload::DEFAULT_MAX_BYTES, $maxRequestBytes = 1048576) {
         $this->request = $request;
         $this->responseFactory = $responseFactory ?: function() { return new \Slim\Http\Response(); };
         $this->maxDownloadBytes = AttachmentDownload::limit($maxDownloadBytes);
         $this->maxUploadBytes = AttachmentUpload::limit($maxUploadBytes);
+        $this->maxRequestBytes = Http::requestLimit($maxRequestBytes);
         $this->handlers = $handlers + array(
             'user' => 'rest_user_get_me',
             'projects' => 'rest_projects_get',
@@ -56,6 +58,14 @@ final class RestApi {
                     'option' => array('status_enum_string', 'priority_enum_string',
                         'severity_enum_string', 'resolution_enum_string', 'view_state_enum_string'),
                 ));
+            case 'mantis_get_attachment_policy':
+                $issueId = $arguments['issue_id'];
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $issueId));
+                require_api('bug_api.php');
+                $project = (int) bug_get_field($issueId, 'project_id');
+                $data = $this->call('options', 'GET', array('project_id' => $project,
+                    'option' => AttachmentPolicy::OPTIONS));
+                return AttachmentPolicy::describe($issueId, $project, $data, $this->maxUploadBytes, $this->maxRequestBytes);
             case 'mantis_list_issues':
                 $query = $arguments + array('page' => 1, 'page_size' => 20, 'project_id' => 0);
                 return $this->call('issues', 'GET', $query);

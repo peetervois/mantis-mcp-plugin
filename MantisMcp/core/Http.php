@@ -21,7 +21,11 @@ final class Http {
         $this->currentUser = $currentUser;
         $this->origin = self::origin($mantisUrl);
         $this->enableWrites = (bool) $enableWrites;
-        $this->maxBytes = max(1024, min(10485760, (int) $maxBytes));
+        $this->maxBytes = self::requestLimit($maxBytes);
+    }
+
+    public static function requestLimit($configured) {
+        return max(1024, min(10485760, (int) $configured));
     }
 
     /**

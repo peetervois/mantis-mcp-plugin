@@ -8,6 +8,7 @@ require_once __DIR__ . '/core/Protocol.php';
 require_once __DIR__ . '/core/AttachmentDownload.php';
 require_once __DIR__ . '/core/ProjectContext.php';
 require_once __DIR__ . '/core/AttachmentUpload.php';
+require_once __DIR__ . '/core/AttachmentPolicy.php';
 require_once __DIR__ . '/core/Relationships.php';
 require_once __DIR__ . '/core/Workflow.php';
 require_once __DIR__ . '/core/AttachmentDelete.php';
@@ -60,8 +61,9 @@ class MantisMcpPlugin extends MantisPlugin {
             \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, true);
         $maxUpload = plugin_config_get('max_upload_bytes',
             \Tauria\MantisMcp\AttachmentUpload::DEFAULT_MAX_BYTES, true);
-        $endpoint = function($request, $response, $args) use ($http, $maxDownload, $maxUpload) {
-            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload, $maxUpload);
+        $maxRequest = plugin_config_get('max_request_bytes', 1048576, true);
+        $endpoint = function($request, $response, $args) use ($http, $maxDownload, $maxUpload, $maxRequest) {
+            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload, $maxUpload, $maxRequest);
             return $http->handle($request, $response, array($api, 'execute'));
         };
         $app->group(plugin_route_group(), function() use ($app, $endpoint) {

@@ -11,7 +11,8 @@ missing/invalid-token rejection, initialization, notification and ping, account
 identity, exact known tool names, closed input schemas and mutation annotations.
 Both the read-only inventory and the complete optional write inventory are
 supported. Write definitions are inspected but never invoked. The optional
-attachment-policy read tool is recognized when discovered.
+attachment-policy read tool is recognized when discovered. With issue checks
+enabled, its absence is explicitly reported as skipped on older servers.
 
 Supply an accessible issue to check its project/status context, full workflow
 graph, status metadata, next-state/access intersection and visible relationship

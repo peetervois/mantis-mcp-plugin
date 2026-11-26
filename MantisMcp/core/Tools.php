@@ -41,6 +41,12 @@ final class Tools {
                 ), array()),
             self::tool('mantis_get_issue', 'Read an accessible issue, including permitted notes.',
                 array('issue_id' => $id, 'select' => $select), array('issue_id')),
+            self::tool('mantis_get_attachment_policy',
+                'Discover upload filename-extension policy and size limits for an accessible issue and its project. '
+                . 'Read before uploading any file type, including documents, archives, logs and images. '
+                . 'Native deny rules take precedence. Empty allowed_files is distinct from an unavailable setting. '
+                . 'Request/PHP/native limits and upload permissions still apply; this is not a MIME allowlist.',
+                array('issue_id' => $id), array('issue_id')),
             self::tool('mantis_get_workflow',
                 'Inspect the effective workflow graph and current-user status thresholds for an accessible issue. '
                 . 'Read this before changing status; discover intermediate states instead of guessing transitions. '
@@ -124,6 +130,7 @@ final class Tools {
                 . 'Use code to read the original local file, compute SHA-256 and base64-encode its bytes; '
                 . 'do not invent file content or print encoded data in chat. The default decoded limit is '
                 . '512 KiB; server, PHP and MantisBT limits also apply. The server cannot read client paths or URLs. '
+                . 'Use mantis_get_attachment_policy before uploading; arbitrary permitted file types are supported. '
                 . 'Returns verified stored-file metadata, including an attachment id for download/readback. '
                 . 'Native MantisBT may rename duplicate filenames. This write is not idempotent: after a timeout '
                 . 'or uncertain result, read the issue before deciding whether to retry. '

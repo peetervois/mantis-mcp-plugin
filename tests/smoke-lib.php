@@ -102,9 +102,8 @@ final class Checks {
             if (count($links) > $limit) { $this->skip('additional reverse-link checks beyond configured peer limit'); }
             if (in_array('mantis_get_attachment_policy', $names, true)) {
                 $policy = $this->tool($role, 'mantis_get_attachment_policy', array('issue_id' => $id));
-                self::ensure(isset($policy->issue_id, $policy->project_id, $policy->policy, $policy->limits)
-                    && $policy->issue_id === $id && $policy->project_id === $before->project->id, 'Attachment policy context');
-            }
+                self::policy($policy, $before);
+            } else { $this->skip($role . ' attachment-policy check: tool not advertised'); }
             $after = $this->issue($role, $id);
             self::ensure($before->status->id === $after->status->id && $before->updated_at === $after->updated_at,
                 'Issue unchanged during read-only checks (or concurrent edit detected)');
@@ -221,7 +220,7 @@ final class Checks {
         foreach ($data->relationships as $r) {
             self::ensure(isset($r->id, $r->target_issue_id, $r->type->id) && is_int($r->id) && $r->id > 0
                 && !isset($seen[$r->id]) && is_int($r->target_issue_id) && $r->target_issue_id > 0
-                && $r->target_issue_id !== $id && isset($types[$r->type->id]), 'Visible relationship definition');
+                && $r->target_issue_id !== $id && is_int($r->type->id) && isset($types[$r->type->id]), 'Visible relationship definition');
             $seen[$r->id] = true;
         }
         return $data->relationships;
@@ -262,5 +261,43 @@ final class Checks {
         $actual = $w->workflow_and_status_access_next_ids;
         sort($expected); sort($actual);
         self::ensure($expected === $actual, 'Workflow and status-access intersection');
+    }
+
+    public static function policy($data, $issue) {
+        self::ensure(isset($data->issue_id, $data->project_id, $data->policy, $data->rules, $data->limits)
+            && $data->issue_id === $issue->id && $data->project_id === $issue->project->id, 'Attachment policy context');
+        $known = true;
+        foreach (array('allowed_files', 'disallowed_files') as $key) {
+            self::ensure(isset($data->policy->$key->available) && is_bool($data->policy->$key->available)
+                && property_exists($data->policy->$key, 'value') && property_exists($data->policy->$key, 'extensions'), 'Policy availability');
+            $p = $data->policy->$key;
+            if ($p->available) {
+                self::ensure(is_string($p->value) && is_array($p->extensions), 'Extension policy types');
+                $expected = trim($p->value) === '' ? array() : array_values(array_unique(array_map('strtolower', explode(',', $p->value))));
+                self::ensure($expected === $p->extensions, 'Native extension token representation');
+            } else {
+                $known = false;
+                self::ensure($p->value === null && $p->extensions === null, 'Unavailable extension policy');
+            }
+        }
+        $p = $data->policy;
+        self::ensure(isset($p->max_file_size->available) && is_bool($p->max_file_size->available)
+            && property_exists($p->max_file_size, 'value'), 'Native size availability');
+        self::ensure($p->max_file_size->available
+            ? (is_int($p->max_file_size->value) && $p->max_file_size->value >= 0) : $p->max_file_size->value === null, 'Native size policy');
+        $r = $data->rules;
+        self::ensure(isset($r->extension_policy_known, $r->extension_case_sensitive, $r->disallowed_takes_precedence)
+            && property_exists($r, 'allow_other_extensions') && $r->extension_policy_known === $known
+            && $r->extension_case_sensitive === false && $r->disallowed_takes_precedence === true
+            && $r->allow_other_extensions === ($known ? trim($p->allowed_files->value) === '' : null), 'Native policy interpretation');
+        $l = $data->limits;
+        foreach (array('plugin_upload_bytes', 'mcp_request_bytes', 'php_upload_max_filesize_bytes', 'php_post_max_size_bytes') as $key) {
+            self::ensure(isset($l->$key) && is_int($l->$key) && $l->$key >= 0, 'Upload/request size types');
+        }
+        $expected = $p->max_file_size->available ? min($p->max_file_size->value, $l->plugin_upload_bytes,
+            $l->php_upload_max_filesize_bytes, $l->php_post_max_size_bytes) : null;
+        self::ensure(property_exists($l, 'decoded_upload_upper_bound_bytes') && $l->decoded_upload_upper_bound_bytes === $expected
+            && isset($l->request_envelope_and_other_limits_apply) && $l->request_envelope_and_other_limits_apply === true,
+            'Effective upload upper bound and request caveat');
     }
 }

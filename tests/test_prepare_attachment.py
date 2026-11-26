@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("prepare_attachment", ROOT / "scripts/prepare-attachment.py")
@@ -82,6 +83,29 @@ class PrepareAttachmentTests(unittest.TestCase):
         self.assertEqual(receipt["sha256"], hashlib.sha256(ICON.read_bytes()).hexdigest())
         self.assertEqual(receipt["size"], ICON.stat().st_size)
         self.assertEqual(receipt["mime_type"], "image/png")
+
+    @unittest.skipUnless(os.environ.get("MANTISBT_SOURCE"), "Set MANTISBT_SOURCE for PHP file round trips")
+    def test_real_zip_text_and_binary_files_round_trip_through_native_storage(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            text = root / "trace.LOG"
+            text.write_text("Example application log\nEvent completed.\n", encoding="utf-8")
+            archive = root / "report.zip"
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zipped:
+                zipped.writestr("report.txt", "Archive fixture with original UTF-8 text: Näide\n")
+            binary = root / "data.bin"
+            binary.write_bytes(bytes(range(256)) * 17)
+            for source in (text, archive, binary):
+                with self.subTest(source=source.name):
+                    completed = subprocess.run(
+                        [os.environ.get("PHP_BINARY", "php"), "-d", "sys_temp_dir=" + folder,
+                         str(ROOT / "tests/import-upload-fixture.php")],
+                        input=json.dumps(PREPARE.prepare(source, 94)), text=True, capture_output=True, check=True,
+                    )
+                    receipt = json.loads(completed.stdout)
+                    self.assertEqual(receipt["filename"], source.name)
+                    self.assertEqual(receipt["size"], source.stat().st_size)
+                    self.assertEqual(receipt["sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ test_case('smoke accepts older version labels when actual capabilities and read 
     }, array('issue_id' => 94, 'hidden_issue_id' => 95, 'expected_user_id' => 1, 'writes' => 'required'));
     check(strpos(implode("\n", $lines), 'version 0.1.0') !== false);
     foreach ($calls as $call) {
-        if ($call[1] === 'tools/call') { check(in_array($call[2], Checks::READS, true)); }
+        if ($call[1] === 'tools/call') { check(in_array($call[2], array_merge(Checks::READS, array('mantis_get_attachment_policy')), true)); }
     }
     foreach ($GLOBALS['test_mantis']['calls'] as $call) { same('GET', $call['method']); }
 });
@@ -47,6 +47,19 @@ test_case('smoke checks separate account visibility and rechecks the first ident
 test_case('smoke reports omitted optional groups instead of claiming they were tested', function() {
     list(, $lines) = smoke_fixture();
     same(3, count(array_filter($lines, function($s) { return strpos($s, 'SKIP ') === 0; })));
+});
+
+test_case('smoke checks the older core inventory deeply without requiring the optional policy tool', function() {
+    list($calls, $lines) = smoke_fixture(function($r, $role, $method) {
+        if ($method === 'tools/list' && $r[0] === 200) {
+            $r[1]->result->tools = array_values(array_filter($r[1]->result->tools, function($t) {
+                return $t->name !== 'mantis_get_attachment_policy';
+            }));
+        }
+        return $r;
+    }, array('issue_id' => 94));
+    check(strpos(implode("\n", $lines), 'attachment-policy check: tool not advertised') !== false);
+    foreach ($calls as $call) { check($call[2] !== 'mantis_get_attachment_policy'); }
 });
 
 test_case('smoke rejects a renamed tool even when the advertised tool count is unchanged', function() {

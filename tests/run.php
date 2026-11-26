@@ -56,7 +56,7 @@ test_case('rejects missing and malformed initialize params', function() {
 
 test_case('lists valid read-only schemas and never changes validation after discovery', function() {
     $response = decoded(send_request(rpc('tools/list')));
-    same(10, count($response->result->tools));
+    same(11, count($response->result->tools));
     foreach ($response->result->tools as $tool) {
         same('object', $tool->inputSchema->type);
         check($tool->inputSchema->properties instanceof stdClass);
@@ -264,8 +264,8 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(17, count($tools));
-    foreach (array_slice($tools, 10) as $tool) {
+    same(18, count($tools));
+    foreach (array_slice($tools, 11) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
         same(false, $tool->annotations->idempotentHint);
     }
@@ -334,6 +334,7 @@ require __DIR__ . '/workflow.php';
 require __DIR__ . '/attachment-delete.php';
 require __DIR__ . '/note-attachments.php';
 require __DIR__ . '/smoke-checks.php';
+require __DIR__ . '/attachment-policy.php';
 
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

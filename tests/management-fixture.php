@@ -45,6 +45,13 @@ require $mantis . '/core/relationship_api.php';
 require $mantis . '/core/commands/IssueRelationshipAddCommand.php';
 require $mantis . '/core/commands/IssueRelationshipDeleteCommand.php';
 require $mantis . '/core/commands/IssueNoteAddCommand.php';
+require $mantis . '/core/commands/ConfigsGetCommand.php';
+
+function config_is_set($key) { return !in_array($key, $GLOBALS['test_mantis']['undefined_configs'], true); }
+function config_is_private($key) { return in_array($key, $GLOBALS['test_mantis']['private_configs'], true); }
+function project_exists($id) { return in_array($id, array(1, 2), true); }
+function user_exists($id) { return in_array($id, array(1, 2), true); }
+function current_user_is_administrator() { return false; }
 
 function lang_get($name) { return $name; }
 function get_enum_element($kind, $id) {

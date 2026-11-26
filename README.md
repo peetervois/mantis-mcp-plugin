@@ -72,7 +72,7 @@ An OpenAI API key is not involved.
 
 ## Tools
 
-The default configuration exposes ten read tools:
+The default configuration exposes eleven read tools:
 
 | Tool | Purpose |
 |---|---|
@@ -82,6 +82,7 @@ The default configuration exposes ten read tools:
 | `mantis_get_issue_options` | Discover project-specific enum ids. |
 | `mantis_list_issues` | List/filter accessible issues, up to 100 per page. |
 | `mantis_get_issue` | Read an accessible issue and its permitted notes. |
+| `mantis_get_attachment_policy` | Discover native upload extension rules and size limits for an accessible issue. |
 | `mantis_get_workflow` | Inspect effective workflow edges and native status thresholds. |
 | `mantis_get_relationship_types` | Discover native/custom relationship types and their reverse types. |
 | `mantis_get_relationships` | Read links whose other issue is accessible to the caller. |
@@ -120,8 +121,10 @@ preparation helper, size limits and handling of uncertain write results.
 See [relationships](docs/RELATIONSHIPS.md), [workflow inspection](docs/WORKFLOW.md)
 and [attachment deletion](docs/DELETION.md) for discovery, permissions and live
 acceptance. Inspect workflow before status changes rather than guessing the
-next state. New-note and existing-note image uploads are covered in the upload
+next state. New-note and existing-note attachment uploads are covered in the upload
 guide; private-note access remains enforced during downloads and deletion.
+See [attachment policy](docs/ATTACHMENT-POLICY.md) before uploading documents,
+archives, logs, images or other permitted files.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.

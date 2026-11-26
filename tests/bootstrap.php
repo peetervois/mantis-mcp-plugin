@@ -77,6 +77,7 @@ function reset_state() {
         'delete_threshold' => 25, 'delete_own' => false, 'notes' => array(),
         'last_note_id' => 2000, 'note_edits' => array(), 'events' => array(), 'moderation' => array(),
         'relationships' => array(), 'last_relationship_id' => 400, 'project_configs' => array(),
+        'private_configs' => array(), 'undefined_configs' => array(),
         'config' => array('status_enum_string' => '10:new,20:feedback,30:acknowledged,40:confirmed,50:assigned,60:working,70:resolved,80:testing,90:closed',
             'status_enum_workflow' => array(10 => '50:assigned,90:closed', 20 => '10:new,50:assigned,90:closed',
                 30 => '10:new,90:closed', 40 => '10:new,90:closed', 50 => '20:feedback,60:working,90:closed',
@@ -240,6 +241,12 @@ function rest_projects_get($request, $response, $path) {
 }
 function rest_config_get($request, $response, $path) {
     record_call('options', $request, $path);
+    $query = $request->getQueryParams();
+    if (array_intersect(isset($query['option']) ? (array) $query['option'] : array(),
+        \Tauria\MantisMcp\AttachmentPolicy::OPTIONS)) {
+        $command = new ConfigsGetCommand(array('query' => $query));
+        return $response->withJson($command->execute());
+    }
     return $response->withJson(array('configs' => array(array(
         'option' => 'status_enum_string', 'value' => array(array('id' => 10, 'name' => 'new'))))));
 }

@@ -18,7 +18,7 @@ The issue's access, read-only state, upload settings and native file-type rules
 still apply. Without a note id, files attach to the issue itself (`note_id: 0`),
 inheriting its visibility. Version 0.4.0 also supports new and existing notes.
 
-## Images and files in notes
+## Files in notes
 
 To create a note and file together, call `mantis_add_note` with `issue_id`,
 `text`, optional `private`, and an `attachment` object containing the four file
@@ -89,6 +89,10 @@ returned MIME type can correct the caller's initial value. Read the issue back
 and use `mantis_download_attachment` for a complete upload/download round trip.
 
 ## Limits
+
+Use [attachment policy discovery](ATTACHMENT-POLICY.md) before preparing any
+file type. It reports native extension settings and the separate size limits
+in the issue's project context, without treating unknown settings as unrestricted.
 
 The decoded upload default is **512 KiB**; the hard maximum is **5 MiB**. Empty
 files are rejected, matching native MantisBT behavior. Filenames are limited to

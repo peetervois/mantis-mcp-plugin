@@ -16,6 +16,11 @@ final class AttachmentUpload {
         return max(1024, min(self::HARD_MAX_BYTES, (int) $configured));
     }
 
+    public static function effectiveLimit($configured, $nativeMax) {
+        return min(self::limit($configured), (int) $nativeMax,
+            (int) ini_get_number('upload_max_filesize'), (int) ini_get_number('post_max_size'));
+    }
+
     /** Call only after the native REST issue-read access check succeeds. */
     public static function execute($issueId, array $arguments, $maxBytes, ?array $newNote = null) {
         return ProjectContext::run($issueId, function() use ($issueId, $arguments, $maxBytes, $newNote) {
@@ -48,8 +53,7 @@ final class AttachmentUpload {
         if (!file_type_check($name)) {
             throw new ToolFailure('This attachment filename is disallowed by MantisBT file-type rules.');
         }
-        $maxBytes = min(self::limit($maxBytes), (int) config_get('max_file_size'),
-            (int) ini_get_number('upload_max_filesize'), (int) ini_get_number('post_max_size'));
+        $maxBytes = self::effectiveLimit($maxBytes, config_get('max_file_size'));
         $encoded = $arguments['content_base64'];
         if (strlen($encoded) > 4 * (int) ceil(max(0, $maxBytes) / 3)) {
             throw new ToolFailure('Attachment exceeds the configured upload size limit.');
