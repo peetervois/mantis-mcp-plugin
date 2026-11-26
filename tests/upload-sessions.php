@@ -327,3 +327,34 @@ test_case('a configured one-second timeout expires in real time and is collected
     same(true, session_call('finish', $begin->structuredContent->upload_id)->result->isError);
     same(300, $GLOBALS['test_mantis']['last_file_id']);
 });
+
+test_case('a lock held by another process does not block other uploads or notes', function() {
+    $GLOBALS['test_mantis']['writes'] = true;
+    $a = session_begin('file A')->result->structuredContent->upload_id;
+    $b = session_begin('file B', array('issue_id' => 96))->result->structuredContent->upload_id;
+    $pipes = array();
+    $process = proc_open(array(PHP_BINARY, __DIR__ . '/hold-upload-lock.php', session_root() . '/' . $a . '.lock'),
+        array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w')), $pipes);
+    check(is_resource($process));
+    try {
+        $read = array($pipes[1]); $write = null; $except = null;
+        same(1, stream_select($read, $write, $except, 2));
+        same("locked\n", fgets($pipes[1]));
+        $started = microtime(true);
+        same(true, session_chunk($a, 0, 'file A')->result->isError);
+        same(false, session_chunk($b, 0, 'file B')->result->isError);
+        $done = session_call('finish', $b)->result;
+        same(false, $done->isError);
+        same(96, $done->structuredContent->issue_id);
+        same('file B', $GLOBALS['test_mantis']['attachments'][$done->structuredContent->attachment_id]['content']);
+        same(false, management_call('mantis_add_note', array('issue_id' => 96, 'text' => 'Unrelated work'))->result->isError);
+        check(microtime(true) - $started < 4, 'Other work waited for the held upload lock');
+    } finally {
+        fwrite($pipes[0], "release\n"); fclose($pipes[0]);
+        fclose($pipes[1]); fclose($pipes[2]); proc_close($process);
+    }
+    same(false, session_chunk($a, 0, 'file A')->result->isError);
+    $done = session_call('finish', $a)->result;
+    same(false, $done->isError); same(94, $done->structuredContent->issue_id);
+    same('file A', $GLOBALS['test_mantis']['attachments'][$done->structuredContent->attachment_id]['content']);
+});

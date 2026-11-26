@@ -39,3 +39,17 @@ include a configured one-second timeout with a real elapsed wait, plus aged
 staging without changing the production clock. They verify
 read-triggered collection, deadline rejection, busy/active session preservation,
 orphan cleanup and absence of native attachments from unfinished uploads.
+
+## Independent work
+
+Each upload has its own opaque id, state, data file and lock. Different sessions
+can progress on different issues while notes or other tool calls run. There is
+no connection-wide active-upload slot. Operations on the same session fail as
+busy while its lock is held, so clients inspect status and retry instead of
+interleaving writes. Garbage collection skips those locks without waiting.
+
+A local subprocess test holds one session's real filesystem lock while the
+authenticated MCP harness uploads/finalizes a different file and adds a note.
+It then releases the first lock and verifies that session resumes correctly.
+This proves lock isolation separately from end-to-end tests with overlapping
+client calls; it is not a throughput or multi-account load test.
