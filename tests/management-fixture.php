@@ -40,6 +40,7 @@ foreach (array('BUG_DUPLICATE' => 0, 'BUG_RELATED' => 1, 'BUG_DEPENDANT' => 2,
 require $mantis . '/core/classes/MantisEnum.class.php';
 load_native_function($mantis . '/core/bug_api.php', 'bug_check_workflow');
 load_native_function($mantis . '/core/access_api.php', 'access_get_status_threshold');
+load_native_function($mantis . '/core/bugnote_api.php', 'bugnote_date_update');
 require $mantis . '/core/relationship_api.php';
 require $mantis . '/core/commands/IssueRelationshipAddCommand.php';
 require $mantis . '/core/commands/IssueRelationshipDeleteCommand.php';
@@ -105,7 +106,6 @@ function bugnote_add($issue, $text, $duration, $private, $type, $attribute, $rep
     return $id;
 }
 function bugnote_process_mentions($issue, $note, $text) { return array(); }
-function bugnote_set_last_modified($id) { $GLOBALS['test_mantis']['note_edits'][] = $id; }
 function email_bugnote_add($id, $files, $exclude) {}
 function event_signal($event, $arguments = array()) {
     $GLOBALS['test_mantis']['events'][] = $event;

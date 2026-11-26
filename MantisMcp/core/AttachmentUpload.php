@@ -91,7 +91,7 @@ final class AttachmentUpload {
                 // Apply the same author/other-author edit thresholds as bugnote_update.php.
                 self::authorizeExistingNote($issueId, $noteId);
                 file_attach_files($issueId, $files, $noteId);
-                bugnote_set_last_modified($noteId);
+                bugnote_date_update($noteId);
                 event_signal('EVENT_BUGNOTE_EDIT', array($issueId, $noteId));
             } else {
                 $command = new \IssueFileAddCommand(array('query' => array('issue_id' => $issueId),

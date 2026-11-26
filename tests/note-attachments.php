@@ -40,11 +40,16 @@ test_case('attaches to an existing note while preserving its text, author and vi
     $GLOBALS['test_mantis']['writes'] = true;
     $original = $GLOBALS['test_mantis']['notes'][1302];
     $before = staging_files();
+    $started = time();
     $result = decoded(upload_call(array('note_id' => 1302)))->result;
     same(false, $result->isError);
     same(1302, $result->structuredContent->note_id);
-    same($original, $GLOBALS['test_mantis']['notes'][1302]);
+    $updated = $GLOBALS['test_mantis']['notes'][1302];
+    check($updated['last_modified'] >= $started);
+    unset($updated['last_modified']);
+    same($original, $updated);
     same(array(1302), $GLOBALS['test_mantis']['note_edits']);
+    check(in_array('EVENT_BUGNOTE_EDIT', $GLOBALS['test_mantis']['events'], true));
     $download = decoded(download_call(array('attachment_id' => $result->structuredContent->attachment_id)))->result;
     same(false, $download->isError);
     same(upload_arguments()->content_base64, $download->structuredContent->content_base64);

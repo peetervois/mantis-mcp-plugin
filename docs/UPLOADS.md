@@ -1,5 +1,10 @@
 # Attachment uploads
 
+Version 0.4.1 fixes a false failure after attaching to an existing note: the
+adapter now calls the native `bugnote_date_update` helper. On 0.4.0, the file
+can already be saved even though the response reports an unconfirmed upload.
+Read the issue before retrying to avoid duplicating that attachment.
+
 MantisMcp 0.3.0 adds `mantis_upload_attachment` to the existing authenticated MCP
 endpoint. It attaches one file to an existing accessible issue as the token
 owner. Enable the existing write tools first:

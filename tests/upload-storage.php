@@ -71,6 +71,11 @@ function db_query($query, $parameters = array()) {
     if (strpos($query, '{bug_relationship}') !== false) {
         return management_relationship_query($query, $parameters);
     }
+    if (strpos($query, 'UPDATE {bugnote} SET last_modified=') === 0) {
+        $state['notes'][$parameters[1]]['last_modified'] = $parameters[0];
+        $state['note_edits'][] = $parameters[1];
+        return array();
+    }
     if (stripos($query, 'SELECT COUNT(*) FROM') !== false) {
         $count = count(array_filter($state['attachments'], function($row) use ($parameters) {
             return $row['filename'] === $parameters[0] && $row['issue_id'] === $parameters[1];
