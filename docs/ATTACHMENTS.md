@@ -74,7 +74,7 @@ to every resumed request. No cross-request file or account cache is used.
 
 ## Deploy and verify
 
-Replace the installed `plugins/MantisMcp` directory with the 0.5.0 package and
+Replace the installed `plugins/MantisMcp` directory with the 0.6.0 package and
 follow the [installation update steps](INSTALL.md). Discover the tools through
 the existing Tauria Tasks connection and confirm
 `mantis_download_attachment` appears. Keep the working API-key remote connection.
