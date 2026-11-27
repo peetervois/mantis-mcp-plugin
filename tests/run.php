@@ -23,7 +23,7 @@ function test_case($name, callable $test) {
 
 test_case('registers a native MantisBT plugin and REST hook', function() {
     $plugin = new MantisMcpPlugin('MantisMcp');
-    same('0.2.0', $plugin->version);
+    same('0.7.1', $plugin->version);
     same('2.26.4', $plugin->requires['MantisCore']);
     same('routes', $plugin->hooks()['EVENT_REST_API_ROUTES']);
     same(OFF, $plugin->config()['enable_write_tools']);
@@ -56,7 +56,7 @@ test_case('rejects missing and malformed initialize params', function() {
 
 test_case('lists valid read-only schemas and never changes validation after discovery', function() {
     $response = decoded(send_request(rpc('tools/list')));
-    same(7, count($response->result->tools));
+    same(12, count($response->result->tools));
     foreach ($response->result->tools as $tool) {
         same('object', $tool->inputSchema->type);
         check($tool->inputSchema->properties instanceof stdClass);
@@ -82,7 +82,7 @@ test_case('rejects unknown and revoked tokens', function() {
 });
 
 test_case('rejects disabled accounts through MantisBT AuthMiddleware', function() {
-    same(403, send_request(rpc('tools/list'), 'disabled-key')->getStatusCode());
+    same(401, send_request(rpc('tools/list'), 'disabled-key')->getStatusCode());
 });
 
 test_case('accepts legacy bare API tokens and case-insensitive Bearer schemes', function() {
@@ -132,12 +132,13 @@ test_case('rejects mismatched token owner and authenticated account', function()
 });
 
 test_case('validates Origin against the configured MantisBT URL', function() {
-    foreach (array('https://attacker.example', 'null', '', 'https://central.tauria.ee/path',
-        'http://central.tauria.ee') as $origin) {
+    $host = parse_url(config_get_global('path'), PHP_URL_HOST);
+    foreach (array('https://attacker.example', 'null', '', 'https://' . $host . '/path',
+        'http://' . $host) as $origin) {
         same(403, send_request(rpc('tools/list'), 'alice-key',
             array('headers' => array('Origin' => $origin)))->getStatusCode());
     }
-    foreach (array('https://central.tauria.ee', 'https://central.tauria.ee:443') as $origin) {
+    foreach (array('https://' . $host, 'https://' . $host . ':443') as $origin) {
         same(200, send_request(rpc('tools/list'), 'alice-key',
             array('headers' => array('Origin' => $origin)))->getStatusCode());
     }
@@ -264,10 +265,11 @@ test_case('checks project access before returning project-specific enum options'
 test_case('adds only explicitly enabled write tools with mutation annotations', function() {
     $GLOBALS['test_mantis']['writes'] = true;
     $tools = decoded(send_request(rpc('tools/list')))->result->tools;
-    same(10, count($tools));
-    foreach (array_slice($tools, 7) as $tool) {
+    same(23, count($tools));
+    foreach (array_slice($tools, 12) as $tool) {
         same(false, $tool->annotations->readOnlyHint);
-        same(false, $tool->annotations->idempotentHint);
+        same(in_array($tool->name, array('mantis_upload_attachment_chunk', 'mantis_finish_attachment_upload',
+            'mantis_cancel_attachment_upload'), true), $tool->annotations->idempotentHint);
     }
 });
 
@@ -296,7 +298,7 @@ test_case('keeps native REST permission failures as MCP tool errors', function()
         'bob-key');
     same(200, $response->getStatusCode());
     same(true, decoded($response)->result->isError);
-    check(strpos(decoded($response)->result->content[0]->text, 'not allowed') !== false);
+    same('The item does not exist or is not accessible to your MantisBT account.', decoded($response)->result->content[0]->text);
 });
 
 test_case('rejects empty updates and maps permitted numeric references', function() {
@@ -328,6 +330,16 @@ test_case('uses native note authorship and preserves unspecified note visibility
 });
 
 require __DIR__ . '/download.php';
+require __DIR__ . '/upload.php';
+require __DIR__ . '/relationships.php';
+require __DIR__ . '/workflow.php';
+require __DIR__ . '/attachment-delete.php';
+require __DIR__ . '/note-attachments.php';
+require __DIR__ . '/smoke-checks.php';
+require __DIR__ . '/attachment-policy.php';
+require __DIR__ . '/upload-sessions.php';
+require __DIR__ . '/disclosure.php';
 
+reset_upload_staging();
 echo "\n" . $passed . " passed; " . $failed . " failed.\n";
 exit($failed ? 1 : 0);

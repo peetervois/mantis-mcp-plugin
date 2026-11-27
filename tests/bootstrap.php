@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  * Copyright (c) 2026, Peeter Vois
  *
- * Integration harness: real Slim 3 and MantisBT 2.26.4's AuthMiddleware and
- * MantisPlugin base class, with a deliberately small in-memory Mantis datastore.
+ * Integration harness: real Slim 3, the selected MantisBT REST middleware
+ * and plugin base class, and an in-memory Mantis datastore.
  */
 
 error_reporting(E_ALL & ~E_DEPRECATED);
@@ -20,7 +20,7 @@ $autoload = dirname(__DIR__) . '/vendor/autoload.php';
 $mantis = getenv('MANTISBT_SOURCE');
 if (!is_file($autoload) || !$mantis
     || !is_file($mantis . '/api/rest/restcore/AuthMiddleware.php')) {
-    fwrite(STDERR, "Run composer install and set MANTISBT_SOURCE to a MantisBT 2.26.4 checkout.\n");
+    fwrite(STDERR, "Run composer install and set MANTISBT_SOURCE to a supported MantisBT checkout.\n");
     exit(1);
 }
 require $autoload;
@@ -31,31 +31,76 @@ define('HTTP_STATUS_SUCCESS', 200);
 define('HTTP_STATUS_UNAUTHORIZED', 401);
 define('HTTP_STATUS_FORBIDDEN', 403);
 define('HTTP_STATUS_NOT_FOUND', 404);
+define('HTTP_STATUS_UNAVAILABLE', 503);
+define('ERROR_BUG_NOT_FOUND', 1100);
 define('HEADER_AUTHORIZATION', 'Authorization');
+define('HEADER_WWW_AUTHENTICATE', 'WWW-Authenticate');
+define('HEADER_VERSION', 'X-Mantis-Version');
 define('HEADER_USERNAME', 'X-Mantis-Username');
 define('HEADER_LOGIN_METHOD', 'X-Mantis-LoginMethod');
 define('LOGIN_METHOD_COOKIE', 'cookie');
 define('LOGIN_METHOD_API_TOKEN', 'api-token');
 define('LOGIN_METHOD_ANONYMOUS', 'anonymous');
 define('ATTRIBUTE_FORCE_API_ENABLED', 'force_enable_api');
+define('HEADER_DEPRECATION', 'Deprecation');
+define('HEADER_LINK', 'Link');
 
 function require_api($name) {
     // Core dependencies are supplied by the in-memory test datastore below.
 }
 require $mantis . '/core/classes/MantisPlugin.class.php';
 require $mantis . '/api/rest/restcore/AuthMiddleware.php';
+require $mantis . '/api/rest/restcore/ApiEnabledMiddleware.php';
+require $mantis . '/api/rest/restcore/VersionMiddleware.php';
+require $mantis . '/api/rest/restcore/OfflineMiddleware.php';
+require $mantis . '/api/rest/restcore/CacheMiddleware.php';
+require $mantis . '/core/exceptions/LegacyApiFaultException.php';
 require $mantis . '/core/file_api.php';
+require __DIR__ . '/upload-storage.php';
+require __DIR__ . '/management-fixture.php';
 require dirname(__DIR__) . '/MantisMcp/MantisMcp.php';
+$GLOBALS['test_mantis_session_url'] = 'https://session-fixture.invalid/' . bin2hex(random_bytes(12)) . '/';
 
 function reset_state() {
+    if (function_exists('reset_upload_staging')) { reset_upload_staging(); }
+    unset($GLOBALS['g_project_override']);
+    $GLOBALS['g_cache_relationships_src'] = array();
+    $GLOBALS['g_cache_relationships_dest'] = array();
+    if (isset($GLOBALS['test_mantis']['storage_dir'])) {
+        foreach (glob($GLOBALS['test_mantis']['storage_dir'] . '/*') as $file) {
+            unlink($file);
+        }
+        rmdir($GLOBALS['test_mantis']['storage_dir']);
+    }
     $GLOBALS['test_mantis'] = array(
         'tokens' => array('alice-key' => 1, 'bob-key' => 2, 'disabled-key' => 3),
-        'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled'),
+        'users' => array(1 => 'alice', 2 => 'bob', 3 => 'disabled', 4 => 'guest'),
+        'anonymous' => false, 'api_access' => true, 'offline' => false,
         'current' => 0, 'writes' => false, 'calls' => array(),
         'max_bytes' => 1048576, 'forced_user' => null,
-        'max_download_bytes' => 5242880, 'download_threshold' => 25,
+        'max_download_bytes' => \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, 'download_threshold' => 25,
         'allow_download_own' => false, 'attachments' => array(),
         'file_response_override' => null,
+        'max_upload_bytes' => 524288, 'upload_threshold' => 25,
+        'max_file_size' => 5242880, 'allow_uploads' => true,
+        'readonly' => false, 'file_method' => DATABASE, 'last_file_id' => 300,
+        'storage_failure' => null, 'attachment_cache' => array(), 'use_attachment_cache' => false,
+        'disallowed_files' => 'svg', 'allowed_files' => '', 'upload_paths' => array(),
+        'delete_threshold' => 25, 'delete_own' => false, 'notes' => array(),
+        'last_note_id' => 2000, 'note_edits' => array(), 'events' => array(), 'moderation' => array(),
+        'relationships' => array(), 'last_relationship_id' => 400, 'project_configs' => array(),
+        'private_configs' => array(), 'undefined_configs' => array(),
+        'config' => array('status_enum_string' => '10:new,20:feedback,30:acknowledged,40:confirmed,50:assigned,60:working,70:resolved,80:testing,90:closed',
+            'status_enum_workflow' => array(10 => '50:assigned,90:closed', 20 => '10:new,50:assigned,90:closed',
+                30 => '10:new,90:closed', 40 => '10:new,90:closed', 50 => '20:feedback,60:working,90:closed',
+                60 => '20:feedback,50:assigned,70:resolved,90:closed', 70 => '50:assigned,80:testing,90:closed',
+                80 => '50:assigned,90:closed', 90 => '20:feedback'),
+            'webservice_rest_enabled' => ON, 'set_status_threshold' => array(), 'bug_submit_status' => 10,
+            'report_bug_threshold' => 25, 'update_bug_status_threshold' => 25,
+            'update_bug_threshold' => 25, 'webservice_readonly_access_level_threshold' => 10,
+            'add_bugnote_threshold' => 25, 'set_view_status_threshold' => 25,
+            'bugnote_user_edit_threshold' => 25, 'update_bugnote_threshold' => 55,
+            'default_bugnote_view_status' => 10, 'reassign_on_feedback' => false),
     );
     $bytes = str_repeat(implode('', array_map('chr', range(0, 255))), 1385) . 'final-bytes';
     foreach (array(array(219, 94, 1302, array(1)), array(220, 96, 1303, array(1)),
@@ -66,6 +111,10 @@ function reset_state() {
             'filename' => 'LOGO_TAURIA_OÜ.jpg', 'file_type' => 'image/jpeg; charset=binary',
             'filesize' => strlen($bytes), 'bytes' => $bytes,
         );
+        if ($file[2] > 0) {
+            $GLOBALS['test_mantis']['notes'][$file[2]] = array('id' => $file[2], 'bug_id' => $file[1],
+                'reporter_id' => 1, 'text' => 'Original note', 'view_state' => 50, 'readers' => $file[3]);
+        }
     }
 }
 
@@ -79,10 +128,26 @@ function auth_get_current_user_id() {
 function auth_is_user_authenticated() {
     return auth_get_current_user_id() > 0;
 }
+function auth_get_current_user_cookie($autoLogin) { return 'fixture-session'; }
+function auth_anonymous_enabled() { return $GLOBALS['test_mantis']['anonymous']; }
+function auth_anonymous_account() { return 'guest'; }
+function mc_version() { return 'fixture-native-version'; }
+function mci_is_mantis_offline() { return $GLOBALS['test_mantis']['offline']; }
+function error_map_mantis_error_to_http_code($code) {
+    $status = array(ERROR_ACCESS_DENIED => 403, ERROR_BUG_NOT_FOUND => 404);
+    return isset($status[$code]) ? $status[$code] : 500;
+}
 function user_get_username($id) {
     return $GLOBALS['test_mantis']['users'][$id];
 }
 function mci_check_login($username, $password) {
+    if ($password === 'fixture-session' && auth_is_user_authenticated()) {
+        return $username === user_get_username(auth_get_current_user_id());
+    }
+    if ($password === '' && $username === 'guest' && auth_anonymous_enabled()) {
+        $GLOBALS['test_mantis']['current'] = 4;
+        return true;
+    }
     $id = api_token_get_user($password);
     if (!$id || $id === 3 || user_get_username($id) !== $username) {
         return false;
@@ -91,27 +156,54 @@ function mci_check_login($username, $password) {
     return true;
 }
 function mci_has_readonly_access() {
-    return true;
+    return $GLOBALS['test_mantis']['api_access'];
 }
 function config_get_global($name, $default = null) {
-    return $name === 'path' ? 'https://central.tauria.ee/mantis/' : $default;
+    if ($name === 'core_path') { return getenv('MANTISBT_SOURCE') . '/core/'; }
+    return $name === 'path' ? (isset($GLOBALS['test_mantis_session_url'])
+        ? $GLOBALS['test_mantis_session_url'] : 'https://central.tauria.ee/mantis/') : $default;
 }
 function config_get($name, $default = null, $user = null, $project = null) {
+    $state = &$GLOBALS['test_mantis'];
+    $project = $project === null ? (isset($GLOBALS['g_project_override']) ? $GLOBALS['g_project_override'] : 1) : $project;
+    if (isset($state['project_configs'][$project]) && array_key_exists($name, $state['project_configs'][$project])) {
+        return $state['project_configs'][$project][$name];
+    }
+    if (array_key_exists($name, $state['config'])) { return $state['config'][$name]; }
     $values = array('view_attachments_threshold' => 10,
         'download_attachments_threshold' => $GLOBALS['test_mantis']['download_threshold'],
         'allow_view_own_attachments' => false,
         'allow_download_own_attachments' => $GLOBALS['test_mantis']['allow_download_own'],
-        'view_bug_threshold' => 10, 'document_files_prefix' => 'doc');
+        'view_bug_threshold' => 10, 'document_files_prefix' => 'doc',
+        'allow_file_upload' => $GLOBALS['test_mantis']['allow_uploads'],
+        'allow_reporter_upload' => OFF,
+        'upload_bug_file_threshold' => $GLOBALS['test_mantis']['upload_threshold'],
+        'max_file_size' => $GLOBALS['test_mantis']['max_file_size'],
+        'allowed_files' => $GLOBALS['test_mantis']['allowed_files'],
+        'disallowed_files' => $GLOBALS['test_mantis']['disallowed_files'],
+        'file_upload_method' => $GLOBALS['test_mantis']['file_method'],
+        'attachments_file_permissions' => 0400);
+    $values['delete_attachments_threshold'] = $state['delete_threshold'];
+    $values['allow_delete_own_attachments'] = $state['delete_own'];
     return isset($values[$name]) ? $values[$name] : $default;
 }
 function bug_get_attachments($issueId) {
-    return array_values(array_filter($GLOBALS['test_mantis']['attachments'],
+    $state = &$GLOBALS['test_mantis'];
+    if ($state['use_attachment_cache'] && isset($state['attachment_cache'][$issueId])) {
+        return $state['attachment_cache'][$issueId];
+    }
+    $rows = array_values(array_filter($state['attachments'],
         function($row) use ($issueId) { return $row['issue_id'] === $issueId; }));
+    $state['attachment_cache'][$issueId] = $rows;
+    return $rows;
 }
 function bug_get_field($issueId, $field) {
     return $field === 'project_id' ? 1 : null;
 }
 function bugnote_get_field($noteId, $field) {
+    if (isset($GLOBALS['test_mantis']['notes'][$noteId])) {
+        return $GLOBALS['test_mantis']['notes'][$noteId][$field];
+    }
     foreach ($GLOBALS['test_mantis']['attachments'] as $file) {
         if ($file['bugnote_id'] === $noteId) {
             return $field === 'bug_id' ? $file['issue_id'] : null;
@@ -131,9 +223,16 @@ function access_has_bugnote_level($threshold, $noteId, $userId = null) {
                 && in_array($userId, $file['note_readers'], true);
         }
     }
+    if (isset($GLOBALS['test_mantis']['notes'][$noteId])) {
+        $note = $GLOBALS['test_mantis']['notes'][$noteId];
+        return access_has_bug_level($threshold, $note['bug_id'], $userId) && in_array($userId, $note['readers'], true);
+    }
     return false;
 }
 function plugin_config_get($name, $default = null, $global = false) {
+    if ($name === 'upload_idle_seconds') {
+        return isset($GLOBALS['test_mantis']['upload_idle_seconds']) ? $GLOBALS['test_mantis']['upload_idle_seconds'] : $default;
+    }
     if ($name === 'enable_write_tools') {
         return $GLOBALS['test_mantis']['writes'];
     }
@@ -142,6 +241,9 @@ function plugin_config_get($name, $default = null, $global = false) {
     }
     if ($name === 'max_download_bytes') {
         return $GLOBALS['test_mantis']['max_download_bytes'];
+    }
+    if ($name === 'max_upload_bytes') {
+        return $GLOBALS['test_mantis']['max_upload_bytes'];
     }
     return $default;
 }
@@ -171,17 +273,27 @@ function rest_projects_get($request, $response, $path) {
 }
 function rest_config_get($request, $response, $path) {
     record_call('options', $request, $path);
+    $query = $request->getQueryParams();
+    if (array_intersect(isset($query['option']) ? (array) $query['option'] : array(),
+        \Tauria\MantisMcp\AttachmentPolicy::OPTIONS)) {
+        $command = new ConfigsGetCommand(array('query' => $query));
+        return $response->withJson($command->execute());
+    }
     return $response->withJson(array('configs' => array(array(
         'option' => 'status_enum_string', 'value' => array(array('id' => 10, 'name' => 'new'))))));
 }
 function rest_issue_get($request, $response, $path) {
     record_call('issues', $request, $path);
     $id = isset($path['id']) ? $path['id'] : 93 + auth_get_current_user_id();
-    if ($id !== 93 + auth_get_current_user_id() && $id !== 96) {
-        return $response->withStatus(404);
+    if (in_array($id, isset($GLOBALS['test_mantis']['denied_issue_ids']) ? $GLOBALS['test_mantis']['denied_issue_ids'] : array(), true)
+        || ($id !== 93 + auth_get_current_user_id() && $id !== 96)) {
+        if (isset($GLOBALS['test_mantis']['issue_fault'])) { throw $GLOBALS['test_mantis']['issue_fault']; }
+        $status = isset($GLOBALS['test_mantis']['issue_denial_status']) ? $GLOBALS['test_mantis']['issue_denial_status'] : 404;
+        return $response->withJson(array('diagnostic' => 'private fixture detail'))->withStatus($status, 'Private fixture reason');
     }
     return $response->withJson(array('issues' => array(array('id' => $id,
-        'summary' => 'Visible to ' . user_get_username(auth_get_current_user_id())))));
+        'summary' => 'Visible to ' . user_get_username(auth_get_current_user_id()),
+        'project' => array('id' => 1), 'status' => array('id' => 60), 'updated_at' => '2026-01-01T00:00:00Z'))));
 }
 function rest_issue_files_get($request, $response, $path) {
     record_call('files', $request, $path);
@@ -225,7 +337,12 @@ function send_request($message, $token = 'alice-key', array $options = array()) 
     // A PHP-FPM request starts with fresh process-local request state.
     $GLOBALS['test_mantis']['current'] = isset($options['cookie_user']) ? $options['cookie_user'] : 0;
     $app = new \Slim\App(array('settings' => array('displayErrorDetails' => false)));
+    $app->add(new \ApiEnabledMiddleware());
     $app->add(new \AuthMiddleware());
+    $app->add(new \VersionMiddleware());
+    $app->add(new \OfflineMiddleware());
+    $app->add(new \CacheMiddleware());
+    if (isset($options['middleware'])) { $app->add($options['middleware']); }
     $plugin = new \MantisMcpPlugin('MantisMcp');
     $plugin->routes('EVENT_REST_API_ROUTES', array('app' => $app));
     $app->get('/unrelated', function($request, $response) {
@@ -247,7 +364,8 @@ function send_request($message, $token = 'alice-key', array $options = array()) 
     fwrite($stream, is_string($message) ? $message : json_encode($message));
     rewind($stream);
     $request = $request->withBody(new \Slim\Http\Body($stream));
-    return $app->process($request, new \Slim\Http\Response());
+    $app->getContainer()['request'] = $request;
+    return $app->run(true);
 }
 
 function rpc($method, $params = null, $id = 1) {

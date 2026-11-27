@@ -5,8 +5,8 @@ endpoint. Each caller authenticates with their own personal MantisBT API token.
 The plugin uses MantisBT's existing REST authentication and REST handlers, so
 operations run as the token owner with normal MantisBT permissions.
 
-Target: **MantisBT 2.26.4**, PHP **7.4+**, with REST API enabled. Other MantisBT
-versions have not yet been verified. No Node.js, separate service, database
+Test targets: **MantisBT 2.26.4** with PHP **7.4+**, and **MantisBT 2.29.0** with
+PHP **8.1+**, with REST API enabled. No Node.js, separate service, database
 tables, server-wide API token, or production Composer installation is required.
 
 [Installation](docs/INSTALL.md) · [ChatGPT connection](docs/CHATGPT.md)
@@ -57,10 +57,16 @@ Bare tokens are accepted for compatibility with MantisBT's REST conventions.
 The plugin normalizes Bearer headers for MantisBT 2.26.4 only on its own MCP
 endpoint. Other REST endpoints are unaffected.
 
-Missing, invalid and revoked tokens return HTTP 401. Cookie-only and anonymous
-access are rejected even when anonymous REST access is enabled. Disabled accounts
-and API access restrictions are still handled by MantisBT. Impersonation headers
-are rejected: MCP acts as the token owner.
+Discovery requires a personal API token accepted by MantisBT. A missing, invalid
+or revoked token, a disabled account and an account without REST access receive
+the same empty HTTP 401 response with a bare `WWW-Authenticate: Bearer` challenge.
+This also applies to browser sessions and installations with guest REST access.
+An invalid Origin or an impersonation header receives an empty HTTP 403.
+Only an authenticated MCP client receives server information, instructions or tool schemas.
+
+MCP omits native username, login method and MantisBT version headers. When a
+tool cannot read an item, native forbidden and missing results have the same
+public message. Upload session errors also conceal other users' transfer and lock state.
 
 Tokens are not configured in the plugin, cached, returned in tool results, or
 written to plugin logs. There is no shared user-data cache. Responses use
@@ -72,7 +78,7 @@ An OpenAI API key is not involved.
 
 ## Tools
 
-The default configuration exposes seven read tools:
+The default configuration exposes twelve read tools:
 
 | Tool | Purpose |
 |---|---|
@@ -82,6 +88,11 @@ The default configuration exposes seven read tools:
 | `mantis_get_issue_options` | Discover project-specific enum ids. |
 | `mantis_list_issues` | List/filter accessible issues, up to 100 per page. |
 | `mantis_get_issue` | Read an accessible issue and its permitted notes. |
+| `mantis_get_attachment_policy` | Discover native upload extension rules and size limits for an accessible issue. |
+| `mantis_get_attachment_upload` | Inspect an owned staged upload and its next byte offset. |
+| `mantis_get_workflow` | Inspect effective workflow edges and native status thresholds. |
+| `mantis_get_relationship_types` | Discover native/custom relationship types and their reverse types. |
+| `mantis_get_relationships` | Read links whose other issue is accessible to the caller. |
 | `mantis_download_attachment` | Download bounded binary chunks after issue and note permission checks. |
 
 To enable writes, add this inside the existing PHP block in
@@ -97,15 +108,39 @@ This additionally exposes:
 |---|---|
 | `mantis_create_issue` | Create an issue as the current user. |
 | `mantis_update_issue` | Update supported fields using MantisBT's normal rules. |
-| `mantis_add_note` | Add a note as the current user. |
+| `mantis_add_note` | Add a note, optionally with an original file, as the current user. |
+| `mantis_upload_attachment` | Upload an original file to an issue or existing editable note. |
+| `mantis_begin_attachment_upload` | Start private staging with the original file size and SHA-256. |
+| `mantis_upload_attachment_chunk` | Send bounded original bytes; exact chunk retries are safe. |
+| `mantis_finish_attachment_upload` | Verify and save the assembled file to an issue, new note or existing note. |
+| `mantis_cancel_attachment_upload` | Discard temporary staging without deleting native attachments. |
+| `mantis_set_relationship` | Create or change a native link between accessible issues. |
+| `mantis_delete_relationship` | Delete a selected relationship using native permissions. |
+| `mantis_delete_attachment` | Permanently delete a selected visible attachment using native permissions. |
 
 Enabling the tools does not grant additional MantisBT permissions. A read-only
 MantisBT account remains read-only. Write schemas do not accept another reporter,
 an arbitrary REST operation, a URL, an upload path or a command to execute.
-Deletion and file upload are not implemented in this version.
+Issue and note deletion are not implemented. Attachment and relationship deletion
+are explicitly marked destructive; use them only for requested actions or
+cleanup of disposable data created for an authorized test.
 
 See [attachment downloads](docs/ATTACHMENTS.md) for the chunk format, binary
 assembly helper, size limits and verification steps.
+See [attachment uploads](docs/UPLOADS.md) for the original file input contract,
+preparation helper, size limits and handling of uncertain write results.
+Use [chunked uploads](docs/CHUNK-UPLOADS.md) for files larger than one request.
+The assembled file inherits MantisBT's size limit by default, with no separate
+MCP total-size ceiling. Native file-type, permission and PHP checks still apply.
+Downloads likewise have no default MCP total-file ceiling; responses remain
+bounded chunks, and an administrator can set an explicit download cap.
+See [relationships](docs/RELATIONSHIPS.md), [workflow inspection](docs/WORKFLOW.md)
+and [attachment deletion](docs/DELETION.md) for discovery, permissions and live
+acceptance. Inspect workflow before status changes rather than guessing the
+next state. New-note and existing-note attachment uploads are covered in the upload
+guide; private-note access remains enforced during downloads and deletion.
+See [attachment policy](docs/ATTACHMENT-POLICY.md) before uploading documents,
+archives, logs, images or other permitted files.
 
 Use `mantis_get_project` for category ids and `mantis_get_issue_options` for
 status/priority/severity ids before creating or updating issues.
@@ -115,6 +150,11 @@ An optional global request-size setting is available:
 ```php
 $g_plugin_MantisMcp_max_request_bytes = 1048576; // Default: 1 MiB.
 ```
+
+That setting bounds each HTTP request, not the assembled file. Leave
+`max_upload_bytes` unset to inherit MantisBT. An administrator may explicitly
+choose a smaller MCP total-file cap; see the upload guide. All eleven write
+tools remain controlled by `enable_write_tools` and native user permissions.
 
 ## Test the endpoint
 
@@ -129,16 +169,19 @@ export MANTIS_MCP_URL=https://mantis.example.com/api/rest/plugins/MantisMcp/mcp
 php tests/smoke.php
 ```
 
-The smoke test only initializes the connection, lists tools, reads the token owner
-and checks unauthenticated/invalid-token failures. It does not create or change
-MantisBT records. To check a second account, repeat it with that account's token.
-Optionally set `MANTIS_MCP_EXPECTED_USER_ID` to check the token owner, and
-`MANTIS_MCP_HIDDEN_ISSUE_ID` to verify rejection of an issue that account must
-not be able to read. Unset `MANTIS_API_TOKEN` after testing.
+The smoke test checks tool names/schemas, identity, authentication and read
+behavior. Its reported server version is informational; actual capabilities
+determine compatibility. Set `MANTIS_MCP_ISSUE_ID` for workflow and relationship
+checks, and `MANTIS_MCP_HIDDEN_ISSUE_ID` for explicit permission checks. A second
+account is supported independently. Optional groups not supplied are reported
+as skipped. No discovered write tool is invoked. See [smoke checks](docs/SMOKE.md)
+for exact commands, inventory expectations and the limits of local versus live
+verification. Unset `MANTIS_API_TOKEN` after testing.
 
 ## Development and checks
 
-Composer is used only to obtain Slim 3 for the development harness. Production
+Composer is used only to obtain Slim 3 for the development harness. Tests also
+need the PHP fileinfo and tokenizer extensions. Production
 uses the Slim version already bundled with MantisBT.
 
 ```bash
@@ -149,14 +192,26 @@ MANTISBT_SOURCE=../mantisbt-2.26.4 composer test
 python3 scripts/package.py
 ```
 
-Tests use the actual MantisBT 2.26.4 `MantisPlugin` base class and
-`AuthMiddleware` with real Slim HTTP requests and an in-memory test datastore.
+Tests use the actual MantisBT 2.26.4 and 2.29.0 plugin base class and REST
+middleware with real Slim HTTP requests and an in-memory test datastore.
+Disclosure tests check response bytes, headers and reason phrases, native
+exceptions, private-note attachments and upload session isolation.
 They cover protocol handling, authentication, token revocation, account
-separation, input bounds, REST dispatch and write-tool gating.
+separation, input bounds, REST dispatch and write-tool gating. Upload tests
+execute each version's actual native command, file API, MIME detection and
+DATABASE/DISK storage code against a fixture database boundary. Workflow tests
+load exact native helper bodies and relationship/note tests use native commands
+with fixture configuration, access, note and relationship storage boundaries. Python tests
+verify client payload preparation and a byte-for-byte upload/download contract.
 They do **not** replace an installation test against a real MantisBT database.
-The integration has not yet been deployed to the target MantisBT instance.
+Production deployment and end-to-end acceptance remain separate from the harness.
 
-The package is written to `dist/MantisMcp-0.2.0.zip`. It contains only the
+The package is written to `dist/MantisMcp-0.7.1.zip`. GitHub Actions uploads the
+matching `dist/install/` tree, so its downloaded artifact is directly installable
+and contains the `MantisMcp/` folder rather than another ZIP. Revision-based file
+timestamps replace the previous fixed timestamps; restart the PHP handler after
+deploying to invalidate compiled-code caches regardless of timestamp settings.
+The package contains only the
 installable plugin directory, its license, documentation and this README; no tokens, development
 dependencies or test data are included.
 

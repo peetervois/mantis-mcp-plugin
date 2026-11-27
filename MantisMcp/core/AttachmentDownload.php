@@ -28,15 +28,17 @@ final class DownloadChunk {
 
 final class AttachmentDownload {
     const CHUNK_BYTES = 65536;
-    const DEFAULT_MAX_BYTES = 5242880;
-    const HARD_MAX_BYTES = 8388608;
+    const DEFAULT_MAX_BYTES = false;
 
     public static function limit($configured) {
-        return max(1024, min(self::HARD_MAX_BYTES, (int) $configured));
+        if ($configured === false || $configured === null) { return null; }
+        $limit = filter_var($configured, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        if ($limit === false) { throw new ToolFailure('Download limit must be unset or a positive integer byte count.'); }
+        return $limit;
     }
 
     /** Call only after the issue's native REST access check has succeeded. */
-    public static function authorize($issueId, $attachmentId, $maxBytes) {
+    public static function authorize($issueId, $attachmentId, $maxBytes, $requireDownload = true) {
         require_api('file_api.php');
         require_api('access_api.php');
         foreach (bug_get_attachments($issueId) as $row) {
@@ -46,7 +48,7 @@ final class AttachmentDownload {
             $owner = (int) $row['user_id'];
             $noteId = (int) $row['bugnote_id'];
             if (!file_can_view_bug_attachments($issueId, $owner)
-                || !file_can_download_bug_attachments($issueId, $owner)) {
+                || ($requireDownload && !file_can_download_bug_attachments($issueId, $owner))) {
                 break;
             }
             if ($noteId > 0) {
@@ -54,15 +56,15 @@ final class AttachmentDownload {
                 if ((int) bugnote_get_field($noteId, 'bug_id') !== $issueId
                     || !access_has_bugnote_level(config_get('view_bug_threshold', null, null, $projectId), $noteId)
                     || !file_can_view_bugnote_attachments($noteId, $owner, $issueId)
-                    || !file_can_download_bugnote_attachments($noteId, $owner)) {
+                    || ($requireDownload && !file_can_download_bugnote_attachments($noteId, $owner))) {
                     break;
                 }
             }
             $size = (int) $row['filesize'];
-            if ($size < 0 || $size > $maxBytes) {
+            if ($size < 0 || ($maxBytes !== null && $size > $maxBytes)) {
                 throw new ToolFailure('Attachment exceeds the configured download size limit.');
             }
-            return array('note_id' => $noteId, 'size' => $size,
+            return array('note_id' => $noteId, 'size' => $size, 'uploader_id' => $owner,
                 'filename' => file_get_display_name($row['filename']));
         }
         throw new ToolFailure('The attachment does not exist or is not accessible to your MantisBT account.');
@@ -86,12 +88,12 @@ final class AttachmentDownload {
             || $filename === '.' || $filename === '..' || preg_match('~[\\\\/\x00-\x1f\x7f]~', $filename)) {
             throw new ToolFailure('The attachment has an unsupported filename.');
         }
-        if (strlen($file->content) > 4 * (int) ceil($maxBytes / 3)) {
-            throw new ToolFailure('Attachment exceeds the configured download size limit.');
+        if (strlen($file->content) > 4 * (int) ceil($info['size'] / 3)) {
+            throw new ToolFailure('MantisBT returned content exceeding the attachment metadata size.');
         }
         $bytes = base64_decode($file->content, true);
         if ($bytes === false || base64_encode($bytes) !== $file->content
-            || strlen($bytes) !== $info['size'] || strlen($bytes) > $maxBytes) {
+            || strlen($bytes) !== $info['size'] || ($maxBytes !== null && strlen($bytes) > $maxBytes)) {
             throw new ToolFailure('MantisBT returned invalid or incomplete attachment content.');
         }
         $hash = hash('sha256', $bytes);

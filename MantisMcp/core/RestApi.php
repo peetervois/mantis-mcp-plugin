@@ -15,12 +15,20 @@ final class RestApi {
     private $responseFactory;
     private $handlers;
     private $maxDownloadBytes;
+    private $maxUploadBytes;
+    private $maxRequestBytes;
+    private $uploadIdleSeconds;
 
     public function __construct($request, ?callable $responseFactory = null, array $handlers = array(),
-        $maxDownloadBytes = AttachmentDownload::DEFAULT_MAX_BYTES) {
+        $maxDownloadBytes = AttachmentDownload::DEFAULT_MAX_BYTES,
+        $maxUploadBytes = AttachmentUpload::DEFAULT_MAX_BYTES, $maxRequestBytes = 1048576,
+        $uploadIdleSeconds = UploadSessions::IDLE_SECONDS) {
         $this->request = $request;
         $this->responseFactory = $responseFactory ?: function() { return new \Slim\Http\Response(); };
         $this->maxDownloadBytes = AttachmentDownload::limit($maxDownloadBytes);
+        $this->maxUploadBytes = $maxUploadBytes;
+        $this->maxRequestBytes = Http::requestLimit($maxRequestBytes);
+        $this->uploadIdleSeconds = $uploadIdleSeconds;
         $this->handlers = $handlers + array(
             'user' => 'rest_user_get_me',
             'projects' => 'rest_projects_get',
@@ -53,6 +61,22 @@ final class RestApi {
                     'option' => array('status_enum_string', 'priority_enum_string',
                         'severity_enum_string', 'resolution_enum_string', 'view_state_enum_string'),
                 ));
+            case 'mantis_get_attachment_policy':
+                $issueId = $arguments['issue_id'];
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $issueId));
+                require_api('bug_api.php');
+                $project = (int) bug_get_field($issueId, 'project_id');
+                $data = $this->call('options', 'GET', array('project_id' => $project,
+                    'option' => AttachmentPolicy::OPTIONS));
+                return AttachmentPolicy::describe($issueId, $project, $data, $this->maxUploadBytes, $this->maxRequestBytes);
+            case 'mantis_begin_attachment_upload':
+            case 'mantis_upload_attachment_chunk':
+            case 'mantis_get_attachment_upload':
+            case 'mantis_finish_attachment_upload':
+            case 'mantis_cancel_attachment_upload':
+                return UploadSessions::execute($name, $arguments, $this->maxUploadBytes, $this->maxRequestBytes,
+                    function($issueId) { $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $issueId)); },
+                    $this->uploadIdleSeconds);
             case 'mantis_list_issues':
                 $query = $arguments + array('page' => 1, 'page_size' => 20, 'project_id' => 0);
                 return $this->call('issues', 'GET', $query);
@@ -74,6 +98,31 @@ final class RestApi {
                     array('id' => $issueId, 'file_id' => $attachmentId));
                 return AttachmentDownload::chunk($issueId, $attachmentId, $info, $data,
                     $offset, $length, $expected, $this->maxDownloadBytes);
+            case 'mantis_get_workflow':
+            case 'mantis_get_relationships':
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                return $name === 'mantis_get_workflow'
+                    ? Workflow::inspect($arguments['issue_id'])
+                    : Relationships::listForIssue($arguments['issue_id']);
+            case 'mantis_get_relationship_types':
+                return Relationships::types();
+            case 'mantis_set_relationship':
+                foreach (array($arguments['issue_id'], $arguments['target_issue_id']) as $id) {
+                    $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $id));
+                }
+                return Relationships::set($arguments['issue_id'], $arguments['target_issue_id'], $arguments['type_id']);
+            case 'mantis_delete_relationship':
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                $target = Relationships::target($arguments['issue_id'], $arguments['relationship_id']);
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $target));
+                return Relationships::delete($arguments['issue_id'], $arguments['relationship_id']);
+            case 'mantis_delete_attachment':
+                $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                return AttachmentDelete::delete($arguments['issue_id'], $arguments['attachment_id']);
+            case 'mantis_upload_attachment':
+                $this->call('issues', 'GET', array('select' => 'id'), null,
+                    array('id' => $arguments['issue_id']));
+                return AttachmentUpload::execute($arguments['issue_id'], $arguments, $this->maxUploadBytes);
             case 'mantis_create_issue':
                 $payload = $this->fields($arguments);
                 $payload['project'] = array('id' => $arguments['project_id']);
@@ -87,6 +136,13 @@ final class RestApi {
                 $payload = array('text' => $arguments['text']);
                 if (array_key_exists('private', $arguments)) {
                     $payload['view_state'] = array('name' => $arguments['private'] ? 'private' : 'public');
+                }
+                if (isset($arguments['attachment'])) {
+                    $this->call('issues', 'GET', array('select' => 'id'), null, array('id' => $arguments['issue_id']));
+                    $attachment = AttachmentUpload::execute($arguments['issue_id'], (array) $arguments['attachment'],
+                        $this->maxUploadBytes, $payload);
+                    return (object) array('issue_id' => $arguments['issue_id'],
+                        'note' => (object) array('id' => $attachment->note_id), 'attachment' => $attachment);
                 }
                 $data = $this->call('note', 'POST', array(), $payload,
                     array('id' => $arguments['issue_id']));
@@ -108,26 +164,37 @@ final class RestApi {
         $request = $this->request->withMethod($method)->withQueryParams($query)->withParsedBody($payload)
             ->withoutHeader('If-Match')->withoutHeader('If-None-Match')
             ->withoutHeader('If-Modified-Since');
-        $response = call_user_func($this->handlers[$handler], $request,
-            call_user_func($this->responseFactory), $path);
+        try {
+            $response = call_user_func($this->handlers[$handler], $request,
+                call_user_func($this->responseFactory), $path);
+        } catch (\Mantis\Exceptions\LegacyApiFaultException $error) {
+            throw self::statusFailure($error->getCode());
+        } catch (\Mantis\Exceptions\MantisException $error) {
+            throw self::statusFailure(error_map_mantis_error_to_http_code($error->getCode()));
+        }
         $status = $response->getStatusCode();
         if ($status < 200 || $status >= 300) {
-            $messages = array(
-                400 => 'MantisBT rejected the supplied values.',
-                401 => 'MantisBT authentication is required.',
-                403 => 'Your MantisBT account is not allowed to perform this operation.',
-                404 => 'The item does not exist or is not accessible to your MantisBT account.',
-                409 => 'The requested change conflicts with the current MantisBT state.',
-                412 => 'The issue changed; read it again before retrying.',
-            );
-            throw new ToolFailure(isset($messages[$status])
-                ? $messages[$status] : 'MantisBT could not complete the operation.');
+            throw self::statusFailure($status);
         }
         $data = json_decode((string) $response->getBody());
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new ToolFailure('MantisBT returned an unexpected response.');
         }
         return $data;
+    }
+
+    private static function statusFailure($status) {
+        if ($status === 403 || $status === 404) {
+            return new ToolFailure('The item does not exist or is not accessible to your MantisBT account.');
+        }
+        $messages = array(
+            400 => 'MantisBT rejected the supplied values.',
+            401 => 'MantisBT authentication is required.',
+            409 => 'The requested change conflicts with the current MantisBT state.',
+            412 => 'The issue changed; read it again before retrying.',
+        );
+        return new ToolFailure(isset($messages[$status])
+            ? $messages[$status] : 'MantisBT could not complete the operation.');
     }
 
     private function fields(array $arguments) {

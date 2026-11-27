@@ -16,44 +16,49 @@ jobs:
       fail-fast: false
       matrix:
         php: ['7.4', '8.1', '8.3', '8.4']
+        mantis: ['2.26.4', '2.29.0']
+        exclude:
+          - php: '7.4'
+            mantis: '2.29.0'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: ctype, iconv
+          extensions: ctype, iconv, fileinfo, tokenizer
           coverage: none
           tools: composer:v2
       - name: Install development dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
       - name: Fetch the supported MantisBT source
-        run: git clone --depth 1 --branch release-2.26.4 https://github.com/mantisbt/mantisbt.git "$RUNNER_TEMP/mantisbt-2.26.4"
+        run: git clone --depth 1 --branch "release-${{ matrix.mantis }}" https://github.com/mantisbt/mantisbt.git "$RUNNER_TEMP/mantisbt"
       - name: Lint PHP
         run: git ls-files -z '*.php' | xargs -0 -n1 php -l
       - name: Test MCP with the native authentication middleware
         env:
-          MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt-2.26.4
+          MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt
         run: composer test
       - name: Test attachment assembly helper
         if: matrix.php == '8.3'
         env:
-          MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt-2.26.4
+          MANTISBT_SOURCE: ${{ runner.temp }}/mantisbt
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Build installable plugin
-        if: matrix.php == '8.3'
+        if: matrix.php == '8.3' && matrix.mantis == '2.29.0'
         run: python3 scripts/package.py
       - name: Upload installable plugin
-        if: matrix.php == '8.3'
+        if: matrix.php == '8.3' && matrix.mantis == '2.29.0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: MantisMcp-0.2.0
-          path: dist/MantisMcp-*.zip
+          name: MantisMcp-0.7.1
+          path: dist/install/
+          include-hidden-files: true
           if-no-files-found: error
       - name: Build Tauria Tasks ChatGPT plugin
-        if: matrix.php == '8.3'
+        if: matrix.php == '8.3' && matrix.mantis == '2.29.0'
         run: python3 scripts/package-chatgpt.py
       - name: Upload Tauria Tasks ChatGPT plugin
-        if: matrix.php == '8.3'
+        if: matrix.php == '8.3' && matrix.mantis == '2.29.0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: TauriaTasks-0.1.1

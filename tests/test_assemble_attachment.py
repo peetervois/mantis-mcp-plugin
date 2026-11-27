@@ -4,6 +4,7 @@ import base64
 from copy import deepcopy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -19,18 +20,47 @@ SPEC.loader.exec_module(ASSEMBLER)
 
 def chunks_for(data, name="Näide-测试.bin", length=65536):
     chunks = []
+    digest = hashlib.sha256(data).hexdigest()
     for offset in range(0, max(1, len(data)), length):
         piece = data[offset:offset + length]
         end = offset + len(piece)
         chunks.append(dict(issue_id=1006, attachment_id=220, note_id=1303,
                            filename=name, mime_type="application/octet-stream", size=len(data),
-                           sha256=hashlib.sha256(data).hexdigest(), offset=offset,
+                           sha256=digest, offset=offset,
                            bytes_returned=len(piece), next_offset=end if end < len(data) else None,
                            complete=end == len(data), content_base64=base64.b64encode(piece).decode()))
     return chunks
 
 
 class AssembleAttachmentTests(unittest.TestCase):
+    def test_large_stream_has_no_default_total_cap_and_is_published_privately(self):
+        data = bytes(range(256)) * 32769
+        self.assertGreater(len(data), 8 * 1024 * 1024)
+        with tempfile.TemporaryDirectory() as directory:
+            target = ASSEMBLER.save(iter(chunks_for(data)), directory)
+            self.assertEqual(target.read_bytes(), data)
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(list(Path(directory).iterdir()), [target])
+        with self.assertRaises(ValueError):
+            ASSEMBLER.assemble(chunks_for(data), max_bytes=1024)
+
+    def test_json_lines_cli_streams_bounded_chunks_and_rejects_oversized_lines(self):
+        data = bytes(range(256)) * 512
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'chunks.jsonl'
+            source.write_text(''.join(json.dumps(c) + '\n' for c in chunks_for(data)))
+            result = subprocess.run(['python3', str(ROOT / 'scripts/assemble-attachment.py'), str(source),
+                                     '--json-lines', '--output-dir', directory], capture_output=True, text=True, check=True)
+            self.assertEqual(Path(result.stdout.strip()).read_bytes(), data)
+        with self.assertRaises(ValueError):
+            list(ASSEMBLER.json_lines(io.BytesIO(b'x' * (ASSEMBLER.MAX_CHUNK_INPUT_BYTES + 1))))
+
+    def test_incomplete_stream_leaves_no_partial_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                ASSEMBLER.save(iter(chunks_for(b'a' * 140000)[:-1]), directory)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     @unittest.skipUnless(os.environ.get("MANTISBT_SOURCE"), "Set MANTISBT_SOURCE for the PHP MCP contract test")
     def test_materializes_actual_php_mcp_responses(self):
         completed = subprocess.run(

@@ -6,6 +6,13 @@
 
 require_once __DIR__ . '/core/Protocol.php';
 require_once __DIR__ . '/core/AttachmentDownload.php';
+require_once __DIR__ . '/core/ProjectContext.php';
+require_once __DIR__ . '/core/AttachmentUpload.php';
+require_once __DIR__ . '/core/AttachmentPolicy.php';
+require_once __DIR__ . '/core/UploadSessions.php';
+require_once __DIR__ . '/core/Relationships.php';
+require_once __DIR__ . '/core/Workflow.php';
+require_once __DIR__ . '/core/AttachmentDelete.php';
 require_once __DIR__ . '/core/Tools.php';
 require_once __DIR__ . '/core/Http.php';
 require_once __DIR__ . '/core/RestApi.php';
@@ -28,6 +35,8 @@ class MantisMcpPlugin extends MantisPlugin {
             'enable_write_tools' => OFF,
             'max_request_bytes' => 1048576,
             'max_download_bytes' => \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES,
+            'max_upload_bytes' => \Tauria\MantisMcp\AttachmentUpload::DEFAULT_MAX_BYTES,
+            'upload_idle_seconds' => \Tauria\MantisMcp\UploadSessions::IDLE_SECONDS,
         );
     }
 
@@ -39,12 +48,13 @@ class MantisMcpPlugin extends MantisPlugin {
         require_api('api_token_api.php');
 
         $app = $arguments['app'];
+        $uploadIdle = plugin_config_get('upload_idle_seconds', \Tauria\MantisMcp\UploadSessions::IDLE_SECONDS, true);
         $http = new \Tauria\MantisMcp\Http(
             function($token) { return api_token_get_user($token); },
             function() { return auth_get_current_user_id(); },
             config_get_global('path'),
             (bool) plugin_config_get('enable_write_tools', OFF, true),
-            plugin_config_get('max_request_bytes', 1048576, true)
+            plugin_config_get('max_request_bytes', 1048576, true), $uploadIdle
         );
 
         // App middleware is LIFO. Register before MantisBT's AuthMiddleware runs,
@@ -52,8 +62,11 @@ class MantisMcpPlugin extends MantisPlugin {
         $app->add(array($http, 'guard'));
         $maxDownload = plugin_config_get('max_download_bytes',
             \Tauria\MantisMcp\AttachmentDownload::DEFAULT_MAX_BYTES, true);
-        $endpoint = function($request, $response, $args) use ($http, $maxDownload) {
-            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload);
+        $maxUpload = plugin_config_get('max_upload_bytes',
+            \Tauria\MantisMcp\AttachmentUpload::DEFAULT_MAX_BYTES, true);
+        $maxRequest = plugin_config_get('max_request_bytes', 1048576, true);
+        $endpoint = function($request, $response, $args) use ($http, $maxDownload, $maxUpload, $maxRequest, $uploadIdle) {
+            $api = new \Tauria\MantisMcp\RestApi($request, null, array(), $maxDownload, $maxUpload, $maxRequest, $uploadIdle);
             return $http->handle($request, $response, array($api, 'execute'));
         };
         $app->group(plugin_route_group(), function() use ($app, $endpoint) {
